@@ -1,3 +1,5 @@
+import pytest
+
 from mate.trajectory.datatypes import EpisodeResult, EpisodeTrajectory, TurnData
 from mate.trajectory.reward import FunctionRewardProvider, RewardWorker
 
@@ -69,3 +71,52 @@ def test_reward_worker_compute_supports_per_turn_rewards() -> None:
     result = worker.compute(traj, FunctionRewardProvider(reward_fn))
 
     assert result.rewards["verifier"] == [0.3, 0.7]
+
+
+def test_reward_worker_compute_raises_when_agent_rewards_missing() -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {"final_reward": 1.0}
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(ValueError, match="agent_rewards"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+
+
+def test_reward_worker_compute_raises_when_agent_rewards_value_type_invalid() -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {
+            "agent_rewards": {"verifier": "bad"},
+            "final_reward": 1.0,
+        }
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(TypeError, match="agent_rewards"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+
+
+def test_reward_worker_compute_raises_when_final_reward_missing() -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {"agent_rewards": {"verifier": 0.5}}
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(ValueError, match="final_reward"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+
+
+def test_reward_worker_compute_wraps_provider_exceptions_with_context() -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        raise RuntimeError("boom")
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(RuntimeError, match="Reward provider failed for episode") as exc_info:
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "boom"
