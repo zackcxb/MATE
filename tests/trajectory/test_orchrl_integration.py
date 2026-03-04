@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,8 @@ from mate.trajectory.pipe import AgentPipe, AgentPipeConfig
 from mate.trajectory.reward import FunctionRewardProvider
 
 
-ORCHRL_SEARCH_DIR = "/home/cxb/OrchRL/examples/mas_app/search"
+DEFAULT_ORCHRL_SEARCH_DIR = "/home/cxb/OrchRL/examples/mas_app/search"
+ORCHRL_SEARCH_DIR = os.environ.get("ORCHRL_SEARCH_DIR", DEFAULT_ORCHRL_SEARCH_DIR)
 
 SCRIPTED_RESPONSES = {
     "verifier": "Based on current context, I can answer directly.\n<verify>yes</verify>",
@@ -128,13 +130,10 @@ async def test_orchrl_search_mas_e2e(orchrl_config: dict[str, object]) -> None:
     )
 
     pipe = AgentPipe(config=pipe_config, backend=ScriptedBackend())
-    try:
-        result = await pipe.run(
-            prompt="What is the meaning of life?",
-            reward_provider=FunctionRewardProvider(_reward_on_answer_tag),
-        )
-    except RuntimeError as exc:
-        pytest.skip(f"OrchRL runtime issue (treated as env skip): {exc}")
+    result = await pipe.run(
+        prompt="What is the meaning of life?",
+        reward_provider=FunctionRewardProvider(_reward_on_answer_tag),
+    )
 
     assert isinstance(result, EpisodeResult)
     assert result.trajectory.episode_id
