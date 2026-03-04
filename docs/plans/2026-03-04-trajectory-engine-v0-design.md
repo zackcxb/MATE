@@ -511,3 +511,14 @@ Token-in-token-out 在此链路中得到完全保障：VerlBackend 内部完成 
 | V0.2 | 树状分支采样 + Branch Coordinator + Trie 存储 |
 | V1 | 轨迹级训推异步 + Relay Worker + 长尾迁移 |
 | V1+ | Reward Model + Multi-LoRA + 服务模式 MAS adapter |
+
+---
+
+## Completion Note (2026-03-04)
+
+Trajectory Engine V0 已完成实现交付。核心模块（Monitor、Backend、Launcher、Collector、RewardWorker、AgentPipe）已落地并通过集成验证。
+
+测试通过记录（UTC）：
+- 日期：2026-03-04
+- 命令：`python -m pytest tests/ -v --timeout=120`
+- 结果：`45 passed`
