@@ -1,6 +1,10 @@
+import os
 import shlex
 import sys
+import time
+from pathlib import Path
 
+import pytest
 import yaml
 
 from mate.trajectory.launcher import MASLauncher
@@ -89,3 +93,87 @@ def test_launch_and_wait_timeout_kills_process():
     exit_code = launcher.wait(process, timeout=0.3)
     assert exit_code != 0
     assert process.poll() is not None
+
+
+def test_wait_timeout_kills_process_group_children(tmp_path):
+    launcher = MASLauncher()
+    child_pid_path = tmp_path / "child.pid"
+    parent_code = (
+        "import pathlib, subprocess, sys, time;"
+        "child=subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']);"
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid), encoding='utf-8');"
+        "time.sleep(60)"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(parent_code)}"
+    process = launcher.launch(command=command)
+
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not child_pid_path.exists():
+        time.sleep(0.05)
+    assert child_pid_path.exists()
+    child_pid = int(child_pid_path.read_text(encoding="utf-8").strip())
+
+    exit_code = launcher.wait(process, timeout=0.3)
+    assert exit_code != 0
+
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"child process {child_pid} still alive after timeout cleanup")
+
+
+def test_prepare_config_write_error_cleans_temp_file(tmp_path, monkeypatch):
+    launcher = MASLauncher(work_dir=tmp_path)
+    before = {p.name for p in tmp_path.iterdir()}
+
+    def _raise_dump_error(*_args, **_kwargs):
+        raise RuntimeError("write failed")
+
+    monkeypatch.setattr("mate.trajectory.launcher.yaml.safe_dump", _raise_dump_error)
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        launcher.prepare_config(
+            config_template=_make_template(),
+            monitor_url="http://127.0.0.1:19000/v1",
+            agent_roles=["verifier", "searcher", "answerer"],
+        )
+
+    after = {p.name for p in tmp_path.iterdir()}
+    assert after == before
+
+
+def test_cleanup_keeps_failed_paths_for_retry(tmp_path, monkeypatch):
+    launcher = MASLauncher(work_dir=tmp_path)
+    path_1 = launcher.prepare_config(
+        config_template=_make_template(),
+        monitor_url="http://127.0.0.1:19000/v1",
+        agent_roles=["verifier", "searcher", "answerer"],
+    )
+    path_2 = launcher.prepare_config(
+        config_template=_make_template(),
+        monitor_url="http://127.0.0.1:19000/v1",
+        agent_roles=["verifier", "searcher", "answerer"],
+    )
+
+    original_unlink = Path.unlink
+    state = {"failed_once": False}
+
+    def _flaky_unlink(self, missing_ok=False):
+        if self == path_1 and not state["failed_once"]:
+            state["failed_once"] = True
+            raise OSError("busy")
+        return original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", _flaky_unlink)
+
+    launcher.cleanup()
+    assert path_1.exists()
+    assert not path_2.exists()
+
+    launcher.cleanup()
+    assert not path_1.exists()

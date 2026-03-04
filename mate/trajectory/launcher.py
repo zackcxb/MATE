@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -47,12 +48,19 @@ class MASLauncher:
             delete=False,
             encoding="utf-8",
         )
+        config_path = Path(temp_file.name)
         try:
             yaml.safe_dump(config, temp_file, sort_keys=False)
+        except Exception:
+            temp_file.close()
+            try:
+                config_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         finally:
             temp_file.close()
 
-        config_path = Path(temp_file.name)
         self._temp_files.append(config_path)
         return config_path
 
@@ -70,9 +78,9 @@ class MASLauncher:
             shell=True,
             cwd=str(self._work_dir) if self._work_dir else None,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
 
     def wait(
@@ -83,13 +91,35 @@ class MASLauncher:
         try:
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            process.kill()
+            self._kill_process_tree(process)
             return process.wait()
 
     def cleanup(self) -> None:
+        remaining: list[Path] = []
         for path in self._temp_files:
             try:
                 path.unlink(missing_ok=True)
             except OSError:
-                pass
-        self._temp_files.clear()
+                remaining.append(path)
+        self._temp_files = remaining
+
+    @staticmethod
+    def _kill_process_tree(process: subprocess.Popen[Any]) -> None:
+        if process.poll() is not None:
+            return
+
+        try:
+            pgid = os.getpgid(process.pid)
+            os.killpg(pgid, signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            pass
+        except OSError:
+            pass
+
+        try:
+            process.kill()
+        except OSError:
+            pass
