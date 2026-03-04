@@ -156,3 +156,89 @@ async def test_vllm_backend_actual_model_overrides_request_model(monkeypatch):
     await backend.generate(req)
 
     assert captured["json"]["model"] == "real-model-name"
+
+
+async def test_vllm_backend_raises_value_error_for_malformed_choices(monkeypatch):
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return httpx.Response(
+                200,
+                json={"choices": []},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr("mate.trajectory.backend.httpx.AsyncClient", FakeAsyncClient)
+
+    backend = VLLMBackend(backend_url="http://fake-vllm")
+    req = ModelRequest(
+        request_id="r1",
+        agent_role="verifier",
+        messages=[{"role": "user", "content": "x"}],
+        generation_params={},
+    )
+
+    with pytest.raises(ValueError, match="malformed response"):
+        await backend.generate(req)
+
+
+async def test_vllm_backend_logprobs_keeps_only_finite_numbers(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "ok"},
+                        "finish_reason": "stop",
+                        "logprobs": {
+                            "content": [
+                                {"token": "a", "logprob": -0.5},
+                                {"token": "b", "logprob": 2},
+                                {"token": "c", "logprob": "bad"},
+                                {"token": "d", "logprob": None},
+                                {"token": "e", "logprob": float("inf")},
+                                {"token": "f", "logprob": float("-inf")},
+                                {"token": "g", "logprob": float("nan")},
+                                {"token": "h", "logprob": True},
+                            ]
+                        },
+                    }
+                ]
+            }
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return FakeResponse()
+
+    monkeypatch.setattr("mate.trajectory.backend.httpx.AsyncClient", FakeAsyncClient)
+
+    backend = VLLMBackend(backend_url="http://fake-vllm")
+    req = ModelRequest(
+        request_id="r1",
+        agent_role="verifier",
+        messages=[{"role": "user", "content": "x"}],
+        generation_params={},
+    )
+    resp = await backend.generate(req)
+
+    assert resp.logprobs == [-0.5, 2.0]

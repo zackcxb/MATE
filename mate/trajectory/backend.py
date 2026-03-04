@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import math
 from typing import Any
 
 import httpx
@@ -46,7 +47,11 @@ class VLLMBackend(InferenceBackend):
             response.raise_for_status()
             data = response.json()
 
-        choice = data["choices"][0]
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ValueError("malformed response: missing or invalid choices")
+
+        choice = choices[0]
         message = choice.get("message") or {}
         content = message.get("content") or ""
         finish_reason = choice.get("finish_reason") or "stop"
@@ -56,8 +61,13 @@ class VLLMBackend(InferenceBackend):
         if isinstance(logprobs_data, dict) and isinstance(logprobs_data.get("content"), list):
             values: list[float] = []
             for token_info in logprobs_data["content"]:
-                if isinstance(token_info, dict) and token_info.get("logprob") is not None:
-                    values.append(token_info["logprob"])
+                if not isinstance(token_info, dict):
+                    continue
+                value = token_info.get("logprob")
+                if isinstance(value, bool):
+                    continue
+                if isinstance(value, (int, float)) and math.isfinite(value):
+                    values.append(float(value))
             logprobs = values
 
         return ModelResponse(
