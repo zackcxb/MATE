@@ -45,6 +45,7 @@ class AgentPipe:
             episode_id=episode_id,
         )
         launcher = MASLauncher(work_dir=self._config.mas_work_dir)
+        primary_error: BaseException | None = None
 
         try:
             port = await monitor.start(
@@ -68,11 +69,38 @@ class AgentPipe:
                 process,
                 self._config.timeout,
             )
+            if exit_code != 0:
+                raise RuntimeError(f"MAS process exited with non-zero exit code {exit_code}")
 
             trajectory = self._collector.build(buffer=monitor.get_buffer(), episode_id=episode_id)
-            result = self._reward_worker.compute(trajectory, reward_provider)
+            result = await asyncio.to_thread(
+                self._reward_worker.compute,
+                trajectory,
+                reward_provider,
+            )
             result.metadata["exit_code"] = exit_code
             return result
+        except BaseException as exc:
+            primary_error = exc
+            raise
         finally:
-            await monitor.stop()
-            launcher.cleanup()
+            stop_error: Exception | None = None
+            cleanup_error: Exception | None = None
+
+            try:
+                await monitor.stop()
+            except Exception as exc:  # pragma: no cover - exercised via tests
+                stop_error = exc
+
+            try:
+                launcher.cleanup()
+            except Exception as exc:  # pragma: no cover - exercised via tests
+                cleanup_error = exc
+
+            if primary_error is None:
+                if stop_error is not None:
+                    if cleanup_error is not None:
+                        stop_error.add_note(f"launcher.cleanup() also failed: {cleanup_error}")
+                    raise stop_error
+                if cleanup_error is not None:
+                    raise cleanup_error
