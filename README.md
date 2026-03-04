@@ -1,6 +1,6 @@
 # MATE Reboot Baseline
 
-This repository is the reboot baseline for inference-first, non-invasive MAS trajectory capture.
+This repository is the baseline for verl-based non-invasive MAS trajectory capture.
 
 ## Scope
 
@@ -12,7 +12,7 @@ This repository is the reboot baseline for inference-first, non-invasive MAS tra
 
 1. `AGENTS.md` workflow governance.
 2. `skills/` reusable team practices.
-3. `docs/plans/2026-03-02-marl-grpo-design.md` cleaned seed design.
+3. `2026-03-02-marl-grpo-v0-directions.md` cleaned seed design.
 
 ## Workflow
 
