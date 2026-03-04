@@ -12,11 +12,15 @@ Do not put milestone progress, temporary conclusions, or one-off debugging notes
 
 1. `AGENTS.md`: agent behavior rules, orchestration rules, review gates, escalation rules.
 2. `docs/project-context.md`: project status, frozen/open decisions, milestone progress.
-3. `docs/prompts/*.md`: reusable task prompts/templates.
+3. `docs/plans/*.md`: design documents and implementation plans.
 4. `skills/*.md`: workflow skill specs (trigger, input, process, output, done criteria).
-5. `docs/retros/*.md`: evidence-based retrospectives and decision traces.
-6. `docs/templates/*.md`: shared structured templates/schema registries.
-7. `docs/references/*.md`: external/local references with necessity notes, not policy source.
+
+The following directories may be created when needed:
+
+- `docs/retros/*.md`: evidence-based retrospectives and decision traces.
+- `docs/prompts/*.md`: reusable task prompts/templates.
+- `docs/templates/*.md`: shared structured templates/schema registries.
+- `docs/references/*.md`: external/local references with necessity notes, not policy source.
 
 If content does not fit this boundary, move it to the correct document.
 
@@ -102,7 +106,11 @@ Governance frequency:
 4. Do not force-push `main`; avoid destructive history rewrites on shared branches.
 5. Never commit secrets or large local artifacts.
 
-## 9. Conflict Resolution Order
+## 9. Objectivity Rule
+
+When answering questions, evaluating trade-offs, or proposing designs, provide objective assessments based on technical merit. Do not align with the user's apparent preference or prior decisions unless the evidence supports them. If the user's inclination has technical downsides, state them clearly. Agreeing for the sake of agreement wastes time and produces worse designs.
+
+## 10. Conflict Resolution Order
 
 When instructions conflict, resolve by scope and specificity:
 
