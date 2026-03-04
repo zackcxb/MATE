@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -19,6 +21,39 @@ class RecordingBackend(InferenceBackend):
             content=f"echo:{request.agent_role}",
             token_ids=[11, 22, 33],
             logprobs=[-0.1, -0.2, -0.3],
+            finish_reason="stop",
+        )
+
+
+class OrderedDelayBackend(InferenceBackend):
+    def __init__(self) -> None:
+        self.slow_started = asyncio.Event()
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        content = request.messages[0]["content"]
+        if content == "slow":
+            self.slow_started.set()
+            await asyncio.sleep(0.05)
+        return ModelResponse(
+            content=f"done:{content}",
+            token_ids=None,
+            logprobs=None,
+            finish_reason="stop",
+        )
+
+
+class GateBackend(InferenceBackend):
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        self.started.set()
+        await self.release.wait()
+        return ModelResponse(
+            content="done",
+            token_ids=None,
+            logprobs=None,
             finish_reason="stop",
         )
 
@@ -142,5 +177,82 @@ async def test_backend_exception_returns_502():
                 json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
             )
         assert response.status_code == 502
+    finally:
+        await monitor.stop()
+
+
+async def test_turn_index_assigned_by_arrival_order_under_concurrency():
+    mapping = {"verifier": ModelMappingEntry(actual_model="m1")}
+    backend = OrderedDelayBackend()
+    monitor = ModelMonitor(backend=backend, model_mapping=mapping)
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            slow_task = asyncio.create_task(
+                client.post(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    json={"model": "verifier", "messages": [{"role": "user", "content": "slow"}]},
+                )
+            )
+            await backend.slow_started.wait()
+            fast_task = asyncio.create_task(
+                client.post(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    json={"model": "verifier", "messages": [{"role": "user", "content": "fast"}]},
+                )
+            )
+            slow_resp, fast_resp = await asyncio.gather(slow_task, fast_task)
+
+        assert slow_resp.status_code == 200
+        assert fast_resp.status_code == 200
+        indices = {record.messages[0]["content"]: record.turn_index for record in monitor.get_buffer()}
+        assert indices["slow"] == 0
+        assert indices["fast"] == 1
+    finally:
+        await monitor.stop()
+
+
+async def test_injects_actual_model_from_mapping_into_backend_request():
+    mapping = {"verifier": ModelMappingEntry(actual_model="mapped-real-model")}
+    backend = RecordingBackend()
+    monitor = ModelMonitor(backend=backend, model_mapping=mapping)
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={
+                    "model": "verifier",
+                    "messages": [{"role": "user", "content": "q"}],
+                    "temperature": 0.2,
+                },
+            )
+
+        assert response.status_code == 200
+        assert backend.requests[0].generation_params["model"] == "mapped-real-model"
+    finally:
+        await monitor.stop()
+
+
+async def test_clear_buffer_drops_inflight_response_after_clear():
+    mapping = {"verifier": ModelMappingEntry(actual_model="m1")}
+    backend = GateBackend()
+    monitor = ModelMonitor(backend=backend, model_mapping=mapping)
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            request_task = asyncio.create_task(
+                client.post(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
+                )
+            )
+            await backend.started.wait()
+            monitor.clear_buffer()
+            backend.release.set()
+            response = await request_task
+
+        assert response.status_code == 200
+        assert monitor.get_buffer() == []
     finally:
         await monitor.stop()

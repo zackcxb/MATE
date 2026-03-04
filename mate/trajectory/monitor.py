@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from typing import Any
@@ -23,6 +24,8 @@ class ModelMonitor:
 
         self._buffer: list[InteractionRecord] = []
         self._turn_counters: dict[str, int] = {}
+        self._buffer_generation = 0
+        self._state_lock = threading.Lock()
 
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None
@@ -62,11 +65,14 @@ class ModelMonitor:
         self._port = None
 
     def get_buffer(self) -> list[InteractionRecord]:
-        return list(self._buffer)
+        with self._state_lock:
+            return list(self._buffer)
 
     def clear_buffer(self) -> None:
-        self._buffer.clear()
-        self._turn_counters.clear()
+        with self._state_lock:
+            self._buffer.clear()
+            self._turn_counters.clear()
+            self._buffer_generation += 1
 
     async def _handle_chat_completions(self, http_request: web.Request) -> web.Response:
         try:
@@ -80,12 +86,20 @@ class ModelMonitor:
         agent_role = body.get("model")
         if not isinstance(agent_role, str) or agent_role not in self._model_mapping:
             return web.json_response({"error": f"unknown agent role: {agent_role}"}, status=400)
+        mapping_entry = self._model_mapping[agent_role]
 
         messages = body.get("messages", [])
         if not isinstance(messages, list):
             return web.json_response({"error": "messages must be a list"}, status=400)
 
         generation_params = {k: v for k, v in body.items() if k not in {"model", "messages"}}
+        if mapping_entry.actual_model is not None:
+            generation_params["model"] = mapping_entry.actual_model
+
+        with self._state_lock:
+            turn_index = self._turn_counters.get(agent_role, 0)
+            self._turn_counters[agent_role] = turn_index + 1
+            generation_snapshot = self._buffer_generation
 
         request_id = uuid.uuid4().hex
         model_request = ModelRequest(
@@ -99,25 +113,22 @@ class ModelMonitor:
             response = await self._backend.generate(model_request)
         except Exception as exc:
             return web.json_response({"error": str(exc)}, status=502)
-
-        turn_index = self._turn_counters.get(agent_role, 0)
-        self._turn_counters[agent_role] = turn_index + 1
-
-        self._buffer.append(
-            InteractionRecord(
-                agent_role=agent_role,
-                turn_index=turn_index,
-                timestamp=time.time(),
-                messages=messages,
-                generation_params=generation_params,
-                response_text=response.content,
-                token_ids=response.token_ids,
-                logprobs=response.logprobs,
-                finish_reason=response.finish_reason,
-                episode_id=self._episode_id,
-                metadata={},
-            )
+        record = InteractionRecord(
+            agent_role=agent_role,
+            turn_index=turn_index,
+            timestamp=time.time(),
+            messages=messages,
+            generation_params=generation_params,
+            response_text=response.content,
+            token_ids=response.token_ids,
+            logprobs=response.logprobs,
+            finish_reason=response.finish_reason,
+            episode_id=self._episode_id,
+            metadata={},
         )
+        with self._state_lock:
+            if generation_snapshot == self._buffer_generation:
+                self._buffer.append(record)
 
         payload: dict[str, Any] = {
             "id": f"chatcmpl-{request_id}",
