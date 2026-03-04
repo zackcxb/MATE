@@ -18,7 +18,7 @@
 
 | 包含 | 不包含 |
 |------|--------|
-| ModelMonitor（anti-call + 内置 ProxyDriver） | 训练侧调度（同事负责） |
+| ModelMonitor（策略模式 + VLLMBackend） | 训练侧调度（同事负责） |
 | MASLauncher（进程模式） | 树状分支采样（V0.2+） |
 | TrajectoryCollector（按 agent 分组输出） | Trie 前缀树存储（V0.2+） |
 | RewardWorker（函数式 reward） | Reward Model（V1+） |
@@ -43,7 +43,7 @@ DrMAS Search（OrchRL `examples/mas_app/search/`）：
 | 轨迹输出粒度 | `Dict[agent_id, List[TurnData]]` | 训练侧按需 group_by，采集侧不承担分组策略 |
 | MAS 启动模式 | 进程模式（subprocess） | 天然 episode 隔离，服务模式后续可加 adapter |
 | Monitor 部署拓扑 | 每 episode 独立实例 | 与进程模式配合，天然隔离 |
-| Monitor 推理模式 | 统一 anti-call，内置 ProxyDriver 作为默认消费者 | 单一代码路径，测试/训练切换仅替换消费者 |
+| Monitor 推理模式 | 策略模式（InferenceBackend 接口），V0 实现 VLLMBackend，训练时替换为 VerlBackend | 单一代码路径，更简单的错误处理，天然支持并行 agent 并发请求 |
 
 ---
 
@@ -64,7 +64,7 @@ AgentPipe (顶层编排，对标 Verl AgentLoop)
 
 | 组件 | 输入 | 输出 | 职责 | 不做什么 |
 |------|------|------|------|---------|
-| ModelMonitor | MAS 的 HTTP 请求 | InteractionRecord 列表 | 拦截 LLM 调用、暂存到队列、采集原始数据 | 不做数据组装、不算 reward |
+| ModelMonitor | MAS 的 HTTP 请求 | InteractionRecord 列表 | 拦截 LLM 调用、委托给 InferenceBackend 推理、采集原始数据 | 不做数据组装、不算 reward |
 | MASLauncher | MAS 配置模板 + 启动命令 | 子进程退出码 | 准备配置、启动/等待 MAS 进程 | 不关心轨迹数据 |
 | RewardWorker | 组装后的轨迹 + reward provider | 带 reward 的轨迹 | 调用用户定义的 reward 函数/模型 | 不做 advantage 计算 |
 | TrajectoryCollector | Monitor 的原始 buffer | EpisodeTrajectory | 按 agent_id 分组、组装结构化数据 | 不做分组策略 |
@@ -73,30 +73,29 @@ AgentPipe (顶层编排，对标 Verl AgentLoop)
 ### 一次 Episode 的执行流程
 
 ```
-1. AgentPipe 初始化 Monitor（绑定端口，加载 model_mapping）
-2. 启动消费者：
-   - 测试模式：启动内置 ProxyDriver
-   - 训练模式：由外部 Verl Worker 接管
-3. MASLauncher 准备配置（base_url → Monitor 地址，model → agent role 名）
-4. MASLauncher 拉起 MAS 子进程
-5. MAS 执行中：
+1. AgentPipe 初始化 Monitor（绑定端口，注入 InferenceBackend）
+   - 测试模式：注入 VLLMBackend（直接转发到 vLLM 服务）
+   - 训练模式：注入 VerlBackend（调用 AsyncLLMServerManager.generate）
+2. MASLauncher 准备配置（base_url → Monitor 地址，model → agent role 名）
+3. MASLauncher 拉起 MAS 子进程
+4. MAS 执行中：
    Agent 发 LLM 请求 → Monitor HTTP Server 接收
-   → 放入 request_queue → 消费者取出
-   → 消费者推理并写回 response → Monitor 返回给 Agent
-   → Monitor 将交互数据记入 buffer
-6. MAS 进程结束
-7. TrajectoryCollector 从 buffer 组装结构化轨迹
-8. RewardWorker 计算奖励
-9. AgentPipe 返回 EpisodeResult
+   → 解析 agent_role → await backend.generate(request)
+   → 提取 token_ids, logprobs → 记入 buffer
+   → 返回干净的 OpenAI 格式响应给 Agent
+5. MAS 进程结束
+6. TrajectoryCollector 从 buffer 组装结构化轨迹
+7. RewardWorker 计算奖励
+8. AgentPipe 返回 EpisodeResult
 ```
 
 ---
 
 ## 3. ModelMonitor 详细设计
 
-### 3.1 核心机制：统一 Anti-Call
+### 3.1 核心机制：策略模式（InferenceBackend）
 
-Monitor 始终使用 anti-call 模式：HTTP handler 将请求放入异步队列，由外部消费者拉取处理。"proxy 模式"退化为一个内置的 ProxyDriver 消费者。
+Monitor 通过 `InferenceBackend` 抽象接口将推理委托给可替换的后端实现。HTTP handler 收到请求后直接 `await backend.generate(request)`，无队列、无间接通信。不同场景通过注入不同的 Backend 实现来切换行为。
 
 ```
 MAS Agent
@@ -104,42 +103,80 @@ MAS Agent
   ▼
 ModelMonitor HTTP Server
   │ 解析 model → agent_role
-  │ 生成 request_id
-  │ 创建 asyncio.Event
-  │ 放入 request_queue
-  │ await event.wait()
-  ▼
-Consumer (ProxyDriver 或 Verl Worker)
-  │ get_request() 从队列取出
-  │ 推理（转发到 vLLM 或 Verl generate）
-  │ send_response(request_id, response)
-  ▼
-ModelMonitor
-  │ event.set()，HTTP handler 继续
+  │ 查 model_mapping 获取路由信息
+  │ await backend.generate(request)
+  │   ├── VLLMBackend: HTTP 转发到 vLLM 服务
+  │   └── VerlBackend: 调用 AsyncLLMServerManager.generate()
   │ 提取 token_ids, logprobs → 记入 buffer
   │ 返回干净的 OpenAI 格式响应给 MAS
   ▼
 MAS Agent 收到响应，继续执行
 ```
 
-### 3.2 接口
+#### 设计决策说明
+
+曾考虑的替代方案是 anti-call 队列模式（参考 SWE-agent recipe 的 ModelProxy）：HTTP handler 将请求放入 `asyncio.Queue`，由外部消费者拉取处理。经客观评估后放弃，原因：
+
+1. **策略模式以更低复杂度实现了同样的"统一代码路径"**——Monitor 内部始终是 `await backend.generate()`，无需管理队列、事件、消费者生命周期
+2. **队列引入了不必要的故障模式**——消费者静默崩溃会导致请求永久挂起（死锁），策略模式下后端异常直接在 handler 的 try/except 中捕获
+3. **顺序及并发请求场景均无需队列**——单 episode 内 LLM 调用为顺序或有限并发（aiohttp 天然处理），队列的核心价值（速率解耦、缓冲、批处理）不适用
+4. **Verl 的 `AsyncLLMServerManager.generate()` 是标准 async 方法**——天然适配策略模式的 `await backend.generate()` 调用，无需队列适配
+
+### 3.2 InferenceBackend 接口
+
+```python
+class InferenceBackend(ABC):
+    @abstractmethod
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        """执行推理，返回包含 token_ids/logprobs 的完整响应。"""
+        ...
+
+class VLLMBackend(InferenceBackend):
+    """测试/离线模式：HTTP 转发到独立 vLLM/SGLang 服务。"""
+    def __init__(self, backend_url: str, actual_model: str | None = None, timeout: float = 120.0):
+        ...
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        # 构造转发请求，注入 logprobs=True
+        # HTTP POST 到 backend_url/v1/chat/completions
+        # 提取 content, token_ids, logprobs, finish_reason
+        ...
+
+class VerlBackend(InferenceBackend):
+    """训练模式：调用 Verl AsyncLLMServerManager，保障 token-in-token-out。"""
+    def __init__(self, server_manager: AsyncLLMServerManager, tokenizer):
+        ...
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        prompt_ids = self.tokenizer.apply_chat_template(request.messages)
+        output = await self.server_manager.generate(
+            request_id=str(uuid.uuid4()),
+            prompt_ids=prompt_ids,
+            sampling_params=request.generation_params,
+        )
+        return ModelResponse(
+            content=self.tokenizer.decode(output.token_ids),
+            token_ids=output.token_ids,
+            logprobs=output.log_probs,
+            finish_reason=output.stop_reason,
+        )
+```
+
+### 3.3 ModelMonitor 接口
 
 ```python
 class ModelMonitor:
-    def __init__(self, model_mapping: Dict[str, BackendConfig]):
-        """model_mapping: agent_role → BackendConfig(backend_url, actual_model)"""
+    def __init__(self, backend: InferenceBackend, model_mapping: Dict[str, ModelMappingEntry]):
+        """
+        backend: 推理后端实现
+        model_mapping: agent_role → ModelMappingEntry(actual_model, backend_config)
+        """
 
     async def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
         """启动 aiohttp 服务，返回实际端口。port=0 由 OS 分配。"""
 
     async def stop(self):
         """关闭 HTTP 服务。"""
-
-    async def get_request(self) -> ModelRequest:
-        """消费者接口：从队列中取出下一个待处理请求。"""
-
-    async def send_response(self, request_id: str, response: ModelResponse):
-        """消费者接口：推送推理结果，唤醒等待中的 HTTP handler。"""
 
     def get_buffer(self) -> List[InteractionRecord]:
         """返回已采集的全部交互记录。"""
@@ -148,33 +185,21 @@ class ModelMonitor:
         """清空 buffer。"""
 ```
 
-### 3.3 内置 ProxyDriver
-
-测试/离线采集场景下的默认消费者：
-
-```python
-async def proxy_driver(monitor: ModelMonitor, model_mapping: Dict[str, BackendConfig]):
-    """循环消费 Monitor 队列，转发到对应后端推理服务。"""
-    while True:
-        request = await monitor.get_request()
-        backend = model_mapping[request.agent_role]
-        response = await forward_to_backend(backend, request)
-        await monitor.send_response(request.request_id, response)
-```
+Monitor 不再暴露 `get_request()` / `send_response()` 消费者接口——推理完全由注入的 Backend 处理。
 
 ### 3.4 Token-in-token-out 保障
 
-- 训练模式：Verl Worker 从 `get_request()` 拿到 text messages，自己 tokenize → generate → 拿到原始 token_ids + logprobs，全程无 detokenize-retokenize 环节
-- 测试模式：ProxyDriver 通过 OpenAI API 通信，需配置 vLLM 返回 token_ids（vLLM 扩展参数），主要用于流程验证
-- 跨 Agent 上下文传递（Agent 1 的 response 文本进入 Agent 2 的 prompt）不影响各 agent 自身 response 的 token-in-token-out
+- **训练模式（VerlBackend）**：在 Backend 内部完成 tokenize → `server_manager.generate(prompt_ids)` → 拿到原始 token_ids + logprobs，全程无 detokenize-retokenize 环节
+- **测试模式（VLLMBackend）**：通过 OpenAI API 通信，需配置 vLLM 返回 token_ids（vLLM 扩展参数），主要用于流程验证
+- **跨 Agent 上下文传递**：Agent 1 的 response 文本进入 Agent 2 的 prompt，属于 prompt 侧（非训练 token），不影响各 agent 自身 response 的 token-in-token-out
 
 ### 3.5 数据结构
 
 ```python
 @dataclass
-class BackendConfig:
-    backend_url: str            # 实际推理服务地址
+class ModelMappingEntry:
     actual_model: str | None    # 实际模型名（None 则保持原 model 字段）
+    backend_url: str | None     # VLLMBackend 专用：该 role 对应的后端地址（None 则使用默认）
 
 @dataclass
 class ModelRequest:
@@ -379,8 +404,8 @@ def search_mas_reward(trajectory: EpisodeTrajectory) -> Dict:
 
 ```python
 class AgentPipe:
-    def __init__(self, config: AgentPipeConfig):
-        self.monitor = ModelMonitor(config.model_mapping)
+    def __init__(self, config: AgentPipeConfig, backend: InferenceBackend):
+        self.monitor = ModelMonitor(backend, config.model_mapping)
         self.launcher = MASLauncher()
         self.collector = TrajectoryCollector()
         self.reward_worker = RewardWorker()
@@ -392,14 +417,7 @@ class AgentPipe:
         port = await self.monitor.start()
         monitor_url = f"http://127.0.0.1:{port}/v1"
 
-        # 2. 启动消费者
-        driver = None
-        if self.config.use_proxy_driver:
-            driver = asyncio.create_task(
-                proxy_driver(self.monitor, self.config.model_mapping)
-            )
-
-        # 3. 准备 MAS 配置并启动
+        # 2. 准备 MAS 配置并启动
         config_path = self.launcher.prepare_config(
             self.config.mas_config_template, monitor_url, self.config.model_mapping
         )
@@ -407,20 +425,16 @@ class AgentPipe:
             self.config.mas_command, config_path, prompt
         )
 
-        # 4. 等待 MAS 完成
+        # 3. 等待 MAS 完成
         exit_code = await self.launcher.wait(process, self.config.timeout)
 
-        # 5. 停止 driver
-        if driver:
-            driver.cancel()
-
-        # 6. 组装轨迹
+        # 4. 组装轨迹
         trajectory = self.collector.build(self.monitor.get_buffer(), episode_id)
 
-        # 7. 计算 reward
+        # 5. 计算 reward
         result = self.reward_worker.compute(trajectory, reward_provider)
 
-        # 8. 清理
+        # 6. 清理
         await self.monitor.stop()
         return result
 ```
@@ -428,8 +442,8 @@ class AgentPipe:
 ### 7.2 Episode 并行采样
 
 ```python
-async def parallel_rollout(prompts, reward_provider, config, n_parallel):
-    pipes = [AgentPipe(config) for _ in range(n_parallel)]
+async def parallel_rollout(prompts, reward_provider, config, backend, n_parallel):
+    pipes = [AgentPipe(config, backend) for _ in range(n_parallel)]
     results = await asyncio.gather(*[
         pipe.run(prompt, reward_provider)
         for pipe, prompt in zip(pipes, prompts)
@@ -437,7 +451,7 @@ async def parallel_rollout(prompts, reward_provider, config, n_parallel):
     return results   # List[EpisodeResult]
 ```
 
-每个 AgentPipe 实例拥有独立的 Monitor（独立端口）和 MAS 进程，天然隔离。
+每个 AgentPipe 实例拥有独立的 Monitor（独立端口）和 MAS 进程，天然隔离。多个 Monitor 的并发推理请求由 InferenceBackend 处理——VLLMBackend 依赖 vLLM 的 continuous batching，VerlBackend 依赖 AsyncLLMServerManager 的负载均衡。
 
 ---
 
@@ -457,25 +471,25 @@ async def parallel_rollout(prompts, reward_provider, config, n_parallel):
 
 ### 8.2 训练集成
 
-Verl Worker 替换 ProxyDriver 作为 Monitor 的消费者：
+训练时注入 `VerlBackend`，直接利用 Verl 的 `AsyncLLMServerManager`：
 
 ```python
-# Verl Worker 侧
-async def verl_consumer(monitor, server_manager, tokenizer):
-    while True:
-        request = await monitor.get_request()
-        prompt_ids = tokenizer.apply_chat_template(request.messages)
-        output = await server_manager.generate(prompt_ids=prompt_ids, ...)
-        response = ModelResponse(
-            content=tokenizer.decode(output.token_ids),
-            token_ids=output.token_ids,
-            logprobs=output.log_probs,
-            finish_reason=output.finish_reason,
-        )
-        await monitor.send_response(request.request_id, response)
+# 训练模式初始化
+backend = VerlBackend(server_manager=verl_server_manager, tokenizer=tokenizer)
+pipe = AgentPipe(config, backend=backend)
+result = await pipe.run(prompt, reward_provider)
 ```
 
-Token-in-token-out 在此链路中得到完全保障。
+调用链路：
+```
+Monitor.handle_request()
+  → VerlBackend.generate()
+    → tokenizer.apply_chat_template(messages) → prompt_ids
+    → server_manager.generate(prompt_ids=prompt_ids) → TokenOutput
+    → ModelResponse(token_ids, logprobs, ...)
+```
+
+Token-in-token-out 在此链路中得到完全保障：VerlBackend 内部完成 tokenize，`server_manager.generate()` 以 token ID 为输入输出，全程无 detokenize-retokenize 环节。同时自动享受 AsyncLLMServerManager 的负载均衡和粘性会话（prefix caching）能力。
 
 ---
 
