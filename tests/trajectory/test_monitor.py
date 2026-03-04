@@ -234,6 +234,27 @@ async def test_injects_actual_model_from_mapping_into_backend_request():
         await monitor.stop()
 
 
+async def test_injects_backend_url_override_from_mapping_into_backend_request():
+    mapping = {"verifier": ModelMappingEntry(actual_model="m1", backend_url="http://role-backend/")}
+    backend = RecordingBackend()
+    monitor = ModelMonitor(backend=backend, model_mapping=mapping)
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={
+                    "model": "verifier",
+                    "messages": [{"role": "user", "content": "q"}],
+                },
+            )
+
+        assert response.status_code == 200
+        assert backend.requests[0].generation_params["_backend_url"] == "http://role-backend/"
+    finally:
+        await monitor.stop()
+
+
 async def test_clear_buffer_drops_inflight_response_after_clear():
     mapping = {"verifier": ModelMappingEntry(actual_model="m1")}
     backend = GateBackend()

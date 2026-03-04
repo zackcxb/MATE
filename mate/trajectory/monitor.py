@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import web
 
-from .backend import InferenceBackend
+from .backend import BACKEND_URL_OVERRIDE_KEY, InferenceBackend
 from .datatypes import InteractionRecord, ModelMappingEntry, ModelRequest
 
 
@@ -95,6 +95,8 @@ class ModelMonitor:
         generation_params = {k: v for k, v in body.items() if k not in {"model", "messages"}}
         if mapping_entry.actual_model is not None:
             generation_params["model"] = mapping_entry.actual_model
+        if mapping_entry.backend_url is not None:
+            generation_params[BACKEND_URL_OVERRIDE_KEY] = mapping_entry.backend_url
 
         with self._state_lock:
             turn_index = self._turn_counters.get(agent_role, 0)

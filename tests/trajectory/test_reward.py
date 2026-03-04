@@ -120,3 +120,48 @@ def test_reward_worker_compute_wraps_provider_exceptions_with_context() -> None:
         worker.compute(traj, FunctionRewardProvider(reward_fn))
     assert isinstance(exc_info.value.__cause__, RuntimeError)
     assert str(exc_info.value.__cause__) == "boom"
+
+
+@pytest.mark.parametrize("bad_scalar", [float("nan"), float("inf"), float("-inf")])
+def test_reward_worker_rejects_non_finite_agent_reward_scalar(bad_scalar: float) -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {
+            "agent_rewards": {"verifier": bad_scalar},
+            "final_reward": 1.0,
+        }
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(TypeError, match="agent_rewards"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+
+
+@pytest.mark.parametrize("bad_item", [float("nan"), float("inf"), float("-inf")])
+def test_reward_worker_rejects_non_finite_agent_reward_list_item(bad_item: float) -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {
+            "agent_rewards": {"verifier": [0.2, bad_item]},
+            "final_reward": 1.0,
+        }
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(TypeError, match="agent_rewards"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))
+
+
+@pytest.mark.parametrize("bad_final", [float("nan"), float("inf"), float("-inf")])
+def test_reward_worker_rejects_non_finite_final_reward(bad_final: float) -> None:
+    def reward_fn(_: EpisodeTrajectory) -> dict[str, object]:
+        return {
+            "agent_rewards": {"verifier": 0.5},
+            "final_reward": bad_final,
+        }
+
+    worker = RewardWorker()
+    traj = _make_trajectory(["verifier"])
+
+    with pytest.raises(TypeError, match="final_reward"):
+        worker.compute(traj, FunctionRewardProvider(reward_fn))

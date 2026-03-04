@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Callable, Protocol
 
 from .datatypes import EpisodeResult, EpisodeTrajectory
@@ -44,9 +45,9 @@ class RewardWorker:
             )
         self._validate_agent_rewards(agent_rewards)
 
-        if final_reward is not None and not self._is_number(final_reward):
+        if final_reward is not None and not self._is_finite_number(final_reward):
             raise TypeError(
-                "Reward payload key 'final_reward' must be int, float, or None",
+                "Reward payload key 'final_reward' must be a finite int, finite float, or None",
             )
 
         return EpisodeResult(
@@ -59,18 +60,20 @@ class RewardWorker:
     @staticmethod
     def _validate_agent_rewards(agent_rewards: dict[str, Any]) -> None:
         for role, value in agent_rewards.items():
-            if RewardWorker._is_number(value):
+            if RewardWorker._is_finite_number(value):
                 continue
             if isinstance(value, list):
-                if all(RewardWorker._is_number(item) for item in value):
+                if all(RewardWorker._is_finite_number(item) for item in value):
                     continue
                 raise TypeError(
-                    f"Reward payload agent_rewards['{role}'] must contain only int/float values",
+                    f"Reward payload agent_rewards['{role}'] must contain only finite int/float values",
                 )
             raise TypeError(
                 f"Reward payload agent_rewards['{role}'] must be int, float, or list[int|float]",
             )
 
     @staticmethod
-    def _is_number(value: Any) -> bool:
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    def _is_finite_number(value: Any) -> bool:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return False
+        return math.isfinite(float(value))

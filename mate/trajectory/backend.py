@@ -8,6 +8,8 @@ import httpx
 
 from .datatypes import ModelRequest, ModelResponse
 
+BACKEND_URL_OVERRIDE_KEY = "_backend_url"
+
 
 class InferenceBackend(ABC):
     @abstractmethod
@@ -29,9 +31,15 @@ class VLLMBackend(InferenceBackend):
         self.timeout = timeout
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
+        generation_params = dict(request.generation_params)
+        backend_url_override = generation_params.pop(BACKEND_URL_OVERRIDE_KEY, None)
+        target_backend_url = self.backend_url
+        if isinstance(backend_url_override, str) and backend_url_override:
+            target_backend_url = backend_url_override.rstrip("/")
+
         payload: dict[str, Any] = {
             "messages": request.messages,
-            **request.generation_params,
+            **generation_params,
         }
         payload["logprobs"] = True
         if self.actual_model:
@@ -41,7 +49,7 @@ class VLLMBackend(InferenceBackend):
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
-                f"{self.backend_url}/v1/chat/completions",
+                f"{target_backend_url}/v1/chat/completions",
                 json=payload,
             )
             response.raise_for_status()

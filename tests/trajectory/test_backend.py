@@ -158,6 +158,56 @@ async def test_vllm_backend_actual_model_overrides_request_model(monkeypatch):
     assert captured["json"]["model"] == "real-model-name"
 
 
+async def test_vllm_backend_uses_backend_url_override_and_drops_reserved_key(monkeypatch):
+    captured: dict[str, object] = {}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            captured["url"] = url
+            captured["json"] = json
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                            "logprobs": None,
+                        }
+                    ]
+                },
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr("mate.trajectory.backend.httpx.AsyncClient", FakeAsyncClient)
+
+    backend = VLLMBackend(backend_url="http://default-vllm")
+    req = ModelRequest(
+        request_id="r1",
+        agent_role="searcher",
+        messages=[{"role": "user", "content": "x"}],
+        generation_params={"temperature": 0.3, "_backend_url": "http://role-vllm/"},
+    )
+    await backend.generate(req)
+
+    assert captured["url"] == "http://role-vllm/v1/chat/completions"
+    assert captured["json"] == {
+        "messages": [{"role": "user", "content": "x"}],
+        "temperature": 0.3,
+        "logprobs": True,
+        "model": "searcher",
+    }
+
+
 async def test_vllm_backend_raises_value_error_for_malformed_choices(monkeypatch):
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs):
