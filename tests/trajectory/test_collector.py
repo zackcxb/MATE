@@ -83,4 +83,11 @@ def test_build_preserves_record_fields():
     assert turn.logprobs == [-0.11, -0.22, -0.33]
     assert turn.finish_reason == "stop"
     assert turn.timestamp == record.timestamp
-    assert turn.metadata == {"source": "test"}
+    assert turn.metadata == {
+        "source": "test",
+        "episode_id": "ep-fidelity",
+        "agent_role": "answerer",
+        "turn_index": 3,
+        "timestamp": record.timestamp,
+    }
+    assert record.metadata == {"source": "test"}
