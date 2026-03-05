@@ -32,16 +32,7 @@ Trajectory Engine V0 已完成全部开发，包含：
 
 ## 任务概览
 
-共三个阶段，按顺序执行：
-
-### 阶段 0: 合并 parallel-rollout 分支
-
-```bash
-cd /home/cxb/MATE-reboot
-git checkout main
-git merge feat/parallel-rollout --no-ff -m "merge: add parallel rollout and vLLM token_ids fix"
-python -m pytest tests/ -v  # 验证 merge 后 60 tests 仍通过
-```
+共两个阶段，按顺序执行：
 
 ---
 
@@ -54,8 +45,8 @@ python -m pytest tests/ -v  # 验证 merge 后 60 tests 仍通过
 逐项检查以下资源是否可用（如果某项不可用，记录原因并跳过，不要阻塞后续工作）：
 
 - [ ] **vLLM 推理服务**：检查是否有运行中的 vLLM 服务（尝试 `curl http://127.0.0.1:8000/v1/models`），如果没有需要启动一个
-- [ ] **模型**：确认 `/data1/lll/models/Qwen3-4B-Instruct-2507` 或其他可用模型路径
-- [ ] **检索服务**：检查 OrchRL 的检索服务是否可用（`curl http://127.0.0.1:18080/health`），如果没有考虑使用 `search.provider: disabled` 跳过
+- [ ] **模型**：确认 `/data1/models/Qwen/Qwen3-4B-Instruct-2507` 或其他可用模型路径。
+- [ ] **检索服务**：检查 OrchRL 的检索服务是否可用（`curl http://127.0.0.1:18080/health`），如果没有考虑使用 `search.provider: disabled` 跳过。
 - [ ] **测试数据**：检查 `~/data/drmas_search_mas/test_sampled.parquet` 是否存在，如果没有运行 `prepare_drmas_search_data.py`
 
 #### 1.2 编写验证脚本
@@ -136,62 +127,15 @@ python -m pytest tests/ -v  # 验证 merge 后 60 tests 仍通过
 
 ---
 
-### 阶段 3: 训练侧对接准备
-
-**目标**：生成一份对接材料，供开发者和训练侧同事用于后续联调。
-
-在 `/home/cxb/MATE-reboot/docs/plans/` 下创建 `2026-03-05-training-integration-spec.md`：
-
-需要包含的内容：
-
-#### 3.1 数据接口规格
-
-详细描述 `EpisodeResult` 的完整结构和各字段含义。以阶段 1 采集到的真实数据为例，展示一个完整 episode 的 JSON 样本（脱敏后）。
-
-#### 3.2 VerlBackend 实现规格
-
-描述 VerlBackend 需要满足的接口契约：
-
-```python
-class VerlBackend(InferenceBackend):
-    """训练模式后端，对接 Verl AsyncLLMServerManager。"""
-
-    def __init__(self, server_manager, tokenizer):
-        ...
-
-    async def generate(self, request: ModelRequest) -> ModelResponse:
-        """
-        1. tokenizer.apply_chat_template(request.messages) → prompt_ids
-        2. server_manager.generate(prompt_ids=prompt_ids, ...) → TokenOutput
-        3. 返回 ModelResponse(token_ids, logprobs, content, finish_reason)
-        """
-```
-
-需要训练侧确认的问题清单：
-1. `AsyncLLMServerManager` 实例如何传给 AgentPipe？
-2. 多模型场景下，每个 agent_role 对应不同的 server_manager？还是同一个 manager 管理多个模型？
-3. 训练侧需要从 TurnData 中取哪些字段构建训练 batch？
-4. DrMAS 的 `group_by_agent_id` 所需的 uid 格式是什么？
-5. reward 是直接用 `rewards[agent_role]`（float），还是需要 token-level reward？
-
-#### 3.3 联调计划
-
-描述三步联调路径：
-1. 单 episode + 单模型 + mock reward → 验证数据流通
-2. N episode 并行 + agent-wise advantage → 验证 GRPO 分组
-3. 完整训练循环 → 验证权重同步
-
----
-
 ## 更新项目文档
 
-完成以上三个阶段后，更新 `docs/project-context.md`：
+完成以上阶段后，更新 `docs/project-context.md`：
 - 当前阶段改为"V0 实现完成 + 真实环境验证完成，待训练侧联调"
 - 待办列表更新
 
 ## 注意事项
 
 - 遵循 `AGENTS.md` 所有规则
-- 如果真实环境不可用（无 vLLM / 无检索服务），用 mock 模式完成流程验证并明确标注
+- 如果真实环境不可用（无 vLLM / 无检索服务），先尝试安装相关软件。安装失败可以暂停向用户求助，或者建议用 mock 模式完成流程验证并明确标注
 - 脚本注重实用性，不需要过度工程化
 - 所有回复使用中文
