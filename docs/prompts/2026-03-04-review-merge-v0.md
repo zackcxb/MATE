@@ -64,6 +64,25 @@ git merge feat/trajectory-engine-v0 --no-ff -m "merge: trajectory engine v0 impl
 4. **MAS 启动**：进程模式（subprocess），每 episode 独立 Monitor 实例
 5. **Reward**：`RewardProvider` 协议，V0 实现 `FunctionRewardProvider`
 
+### 第四步：修复 VLLMBackend token_ids 提取
+
+当前 `mate/trajectory/backend.py` 中 `VLLMBackend.generate()` 硬编码返回 `token_ids=None`。vLLM 的 `/v1/chat/completions` 支持通过 `return_token_ids: true` 请求参数返回 token IDs。
+
+修复内容（在现有代码上改两处）：
+
+1. 请求构造时注入 `return_token_ids`（和已有的 `logprobs=True` 并列）：
+```python
+payload["logprobs"] = True
+payload["return_token_ids"] = True
+```
+
+2. 响应解析时从 `choice.get("token_ids")` 提取（替代硬编码的 `None`）：
+```python
+token_ids = choice.get("token_ids")  # list[int] | None
+```
+
+同时更新对应测试，验证 `return_token_ids` 被注入请求、且 token_ids 从响应中正确提取。
+
 ## 注意事项
 
 - 遵循 `AGENTS.md` 所有规则
