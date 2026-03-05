@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-04
+> 最后更新：2026-03-05
 
 ## 项目定位
 
@@ -8,7 +8,10 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**设计完成，待进入实施。**
+**V0 实现完成，已合并到 `main`。**
+
+- 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
+- 验证结果：`python -m pytest tests/ -v --timeout=120` → `56 passed`
 
 ## 团队分工
 
@@ -37,6 +40,8 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 待办
 
-- [ ] 制定实施计划
-- [ ] 实现 AgentPipe 核心模块
-- [ ] DrMAS Search 端到端验证
+- [x] 制定实施计划
+- [x] 实现 AgentPipe 核心模块
+- [x] DrMAS Search 端到端验证
+- [ ] vLLM token_ids 提取（真实后端响应中的 token ids 对齐与验证）
+- [ ] Episode 并行采样（并发 rollout 编排与稳定性验证）
