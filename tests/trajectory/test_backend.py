@@ -33,6 +33,7 @@ async def test_vllm_backend_generate_forwards_and_parses(monkeypatch):
                         {
                             "message": {"role": "assistant", "content": "test response"},
                             "finish_reason": "stop",
+                            "token_ids": [101, 102],
                             "logprobs": {
                                 "content": [
                                     {"token": "test", "logprob": -0.5},
@@ -61,12 +62,14 @@ async def test_vllm_backend_generate_forwards_and_parses(monkeypatch):
     assert isinstance(resp, ModelResponse)
     assert resp.content == "test response"
     assert resp.finish_reason == "stop"
+    assert resp.token_ids == [101, 102]
     assert resp.logprobs == [-0.5, -0.3]
     assert captured["json"] == {
         "messages": [{"role": "user", "content": "hello"}],
         "temperature": 0.7,
         "max_tokens": 128,
         "logprobs": True,
+        "return_token_ids": True,
         "model": "Qwen3-4B",
     }
 
@@ -112,6 +115,7 @@ async def test_vllm_backend_forces_logprobs_true(monkeypatch):
     await backend.generate(req)
 
     assert captured["json"]["logprobs"] is True
+    assert captured["json"]["return_token_ids"] is True
     assert captured["json"]["model"] == "searcher"
 
 
@@ -204,6 +208,7 @@ async def test_vllm_backend_uses_backend_url_override_and_drops_reserved_key(mon
         "messages": [{"role": "user", "content": "x"}],
         "temperature": 0.3,
         "logprobs": True,
+        "return_token_ids": True,
         "model": "searcher",
     }
 

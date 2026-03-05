@@ -42,6 +42,7 @@ class VLLMBackend(InferenceBackend):
             **generation_params,
         }
         payload["logprobs"] = True
+        payload["return_token_ids"] = True
         if self.actual_model:
             payload["model"] = self.actual_model
         elif "model" not in payload:
@@ -63,6 +64,7 @@ class VLLMBackend(InferenceBackend):
         message = choice.get("message") or {}
         content = message.get("content") or ""
         finish_reason = choice.get("finish_reason") or "stop"
+        token_ids = choice.get("token_ids")
 
         logprobs: list[float] | None = None
         logprobs_data = choice.get("logprobs")
@@ -80,7 +82,7 @@ class VLLMBackend(InferenceBackend):
 
         return ModelResponse(
             content=content,
-            token_ids=None,
+            token_ids=token_ids if isinstance(token_ids, list) else None,
             logprobs=logprobs,
             finish_reason=finish_reason,
         )
