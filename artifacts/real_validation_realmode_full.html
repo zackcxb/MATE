@@ -1,0 +1,102 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Trajectory Report</title>
+  <style>
+    body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 24px; }
+    h1, h2, h3 { margin-top: 1.2em; }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 8px; }
+    table { margin: 8px 0 20px 0; width: 100%; }
+  </style>
+</head>
+<body>
+<h1>Trajectory Validation Report</h1>
+<h2>Summary</h2>
+<ul>
+<li>run_mode: real</li>
+<li>total_episodes: 10</li>
+<li>success_rate: 0.00%</li>
+<li>avg_turns: 9.00</li>
+</ul>
+<h3>Episode 93b15649d4454856b890c29d938a12bf</h3>
+<p>reward=0.0, turns=9</p>
+<pre>
+  [0] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [1] searcher -&gt; &quot;In 1901, who was awarded the first Nobel Prize in Physics...&quot;
+  [2] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [3] searcher -&gt; &quot;I must first reason through the task. The question is: &quot;W...&quot; (query=who received the first Nobel Prize in Physics in 1901)
+  [4] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [5] searcher -&gt; &quot;I must first reason through the task. The question is: &quot;W...&quot; (query=who received the first Nobel Prize in Physics in 1901)
+  [6] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [7] searcher -&gt; &quot;I must first reason through the task. The question is: &quot;W...&quot; (query=who received the first Nobel Prize in Physics in 1901)
+  [8] answerer -&gt; &quot;I must first reason through the task. The question is: &quot;W...&quot; (decision=no)
+</pre>
+<p style='color:#0a7d2e'><strong>Warnings:</strong> none</p>
+<table border='1' cellspacing='0' cellpadding='6'>
+<tr><th>agent</th><th>turn</th><th>token_len</th><th>logprob_len</th><th>msg_len</th><th>status</th></tr>
+<tr><td>verifier</td><td>0</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>0</td><td>22</td><td>22</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>1</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>1</td><td>152</td><td>152</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>2</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>2</td><td>129</td><td>129</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>3</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>3</td><td>129</td><td>129</td><td>1</td><td>OK</td></tr>
+<tr><td>answerer</td><td>0</td><td>192</td><td>192</td><td>1</td><td>OK</td></tr>
+</table>
+<h3>Episode aa974a63c7ef4baa9f05b88995dd7e65</h3>
+<p>reward=0.0, turns=9</p>
+<pre>
+  [0] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [1] searcher -&gt; &quot;In 1901, who was awarded the first Nobel Prize in Physics...&quot;
+  [2] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [3] searcher -&gt; &quot;I must reason step by step to generate a precise retrieva...&quot; (query=Who received the first Nobel Prize in Physics in 1901 and for what discovery?)
+  [4] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [5] searcher -&gt; &quot;I must reason step by step to generate a precise retrieva...&quot; (query=Who received the first Nobel Prize in Physics in 1901 and for what discovery?)
+  [6] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [7] searcher -&gt; &quot;I must reason step by step to generate a precise retrieva...&quot; (query=Who received the first Nobel Prize in Physics in 1901 and for what discovery?)
+  [8] answerer -&gt; &quot;I must reason step by step to determine who received the ...&quot; (answer=Wilhelm Conrad Röntgen)
+</pre>
+<p style='color:#0a7d2e'><strong>Warnings:</strong> none</p>
+<table border='1' cellspacing='0' cellpadding='6'>
+<tr><th>agent</th><th>turn</th><th>token_len</th><th>logprob_len</th><th>msg_len</th><th>status</th></tr>
+<tr><td>verifier</td><td>0</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>0</td><td>22</td><td>22</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>1</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>1</td><td>178</td><td>178</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>2</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>2</td><td>181</td><td>181</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>3</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>3</td><td>181</td><td>181</td><td>1</td><td>OK</td></tr>
+<tr><td>answerer</td><td>0</td><td>189</td><td>189</td><td>1</td><td>OK</td></tr>
+</table>
+<h3>Episode 336b30d514a3426d9eb6bb19b14c279e</h3>
+<p>reward=0.0, turns=9</p>
+<pre>
+  [0] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [1] searcher -&gt; &quot;I need to determine the release date of the next Deadpool...&quot; (query=release date of the next Deadpool movie 2024)
+  [2] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [3] searcher -&gt; &quot;I need to find the release date of the next Deadpool movi...&quot; (query=upcoming Deadpool movie release date 2024 official announcement)
+  [4] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [5] searcher -&gt; &quot;I need to find the most accurate and up-to-date informati...&quot; (query=official announcement of the next Deadpool movie release date 2024)
+  [6] verifier -&gt; &quot;&lt;verify&gt;no&lt;/verify&gt;&quot; (decision=no)
+  [7] searcher -&gt; &quot;I need to generate a precise retrieval query to find the ...&quot; (query=official announcement of the next Deadpool movie release date as of 2024)
+  [8] answerer -&gt; &quot;I need to determine when the next Deadpool movie is being...&quot; (answer=As of now, there is no official announcement regarding the release date of the next Deadpool movie. The release date has not been confirmed by Marvel Studios or official sources.)
+</pre>
+<p style='color:#0a7d2e'><strong>Warnings:</strong> none</p>
+<table border='1' cellspacing='0' cellpadding='6'>
+<tr><th>agent</th><th>turn</th><th>token_len</th><th>logprob_len</th><th>msg_len</th><th>status</th></tr>
+<tr><td>verifier</td><td>0</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>0</td><td>61</td><td>61</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>1</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>1</td><td>65</td><td>65</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>2</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>2</td><td>110</td><td>110</td><td>1</td><td>OK</td></tr>
+<tr><td>verifier</td><td>3</td><td>8</td><td>8</td><td>1</td><td>OK</td></tr>
+<tr><td>searcher</td><td>3</td><td>116</td><td>116</td><td>1</td><td>OK</td></tr>
+<tr><td>answerer</td><td>0</td><td>302</td><td>302</td><td>1</td><td>OK</td></tr>
+</table>
+</body>
+</html>
