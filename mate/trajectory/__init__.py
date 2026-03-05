@@ -11,6 +11,7 @@ from .datatypes import (
 )
 from .launcher import MASLauncher
 from .monitor import ModelMonitor
+from .parallel import parallel_rollout
 from .pipe import AgentPipe, AgentPipeConfig
 from .reward import FunctionRewardProvider, RewardProvider, RewardWorker
 
@@ -27,6 +28,7 @@ __all__ = [
     "ModelMonitor",
     "ModelRequest",
     "ModelResponse",
+    "parallel_rollout",
     "RewardProvider",
     "RewardWorker",
     "TrajectoryCollector",
