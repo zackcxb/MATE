@@ -32,7 +32,7 @@ Trajectory Engine V0 已完成全部开发，包含：
 
 ## 任务概览
 
-共两个阶段，按顺序执行：
+共三个阶段，按顺序执行：
 
 ---
 
@@ -124,6 +124,40 @@ Trajectory Engine V0 已完成全部开发，包含：
    - 每个 agent 的调用次数分布
    - 每个 agent 的平均生成 token 数
    - episode 平均 turn 数
+
+---
+
+### 阶段 3: 训练侧对接准备
+**目标**：生成一份对接材料，供开发者和训练侧同事用于后续联调。
+在 `/home/cxb/MATE-reboot/docs/plans/` 下创建 `2026-03-05-training-integration-spec.md`：
+需要包含的内容：
+#### 3.1 数据接口规格
+详细描述 `EpisodeResult` 的完整结构和各字段含义。以阶段 1 采集到的真实数据为例，展示一个完整 episode 的 JSON 样本（脱敏后）。
+#### 3.2 VerlBackend 实现规格
+描述 VerlBackend 需要满足的接口契约：
+```python
+class VerlBackend(InferenceBackend):
+    """训练模式后端，对接 Verl AsyncLLMServerManager。"""
+    def __init__(self, server_manager, tokenizer):
+        ...
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        """
+        1. tokenizer.apply_chat_template(request.messages) → prompt_ids
+        2. server_manager.generate(prompt_ids=prompt_ids, ...) → TokenOutput
+        3. 返回 ModelResponse(token_ids, logprobs, content, finish_reason)
+        """
+```
+需要训练侧确认的问题清单：
+1. `AsyncLLMServerManager` 实例如何传给 AgentPipe？
+2. 多模型场景下，每个 agent_role 对应不同的 server_manager？还是同一个 manager 管理多个模型？
+3. 训练侧需要从 TurnData 中取哪些字段构建训练 batch？
+4. DrMAS 的 `group_by_agent_id` 所需的 uid 格式是什么？
+5. reward 是直接用 `rewards[agent_role]`（float），还是需要 token-level reward？
+#### 3.3 联调计划
+描述三步联调路径：
+1. 单 episode + 单模型 + mock reward → 验证数据流通
+2. N episode 并行 + agent-wise advantage → 验证 GRPO 分组
+3. 完整训练循环 → 验证权重同步
 
 ---
 

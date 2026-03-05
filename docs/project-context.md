@@ -42,8 +42,17 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | 依赖 | 路径 | 用途 |
 |------|------|------|
 | OrchRL Search MAS | `/home/cxb/OrchRL/examples/mas_app/search/` | V0 端到端验证的 MAS 应用 |
-| Verl | `/home/cxb/rl_framework/verl/` | RL 框架基线，VerlBackend 集成参考 |
+| Verl | `third_party/verl`（git submodule） | RL 框架基线，VerlBackend 集成参考 |
 | 团队架构 PPT | `/home/cxb/multi-agent/docs/multi-agent-rl.pdf` | 整体架构对齐参考 |
+
+## 文档索引
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| `docs/plans/2026-03-02-marl-grpo-v0-directions.md` | 方向设计 | V0 方向评估 |
+| `docs/plans/2026-03-04-trajectory-engine-v0-design.md` | 架构设计 | V0 详细设计（已冻结） |
+| `docs/plans/2026-03-04-trajectory-engine-v0-impl-plan.md` | 实施计划 | V0 实施细节 |
+| `docs/plans/2026-03-05-training-integration-spec.md` | 对接规格 | 训练侧联调接口文档 |
 
 ## 待办
 
@@ -53,5 +62,6 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] vLLM token_ids 提取链路验证（Monitor/Backend/序列化）
 - [x] Episode 并行采样（并发 rollout 编排与稳定性验证）
 - [x] 真实环境验证脚本与可视化工具落地
+- [x] 编写训练侧对接规格文档
 - [ ] 在无临时环境补丁条件下复跑 real vLLM + 检索服务端到端验证
 - [ ] 与训练侧进行联调（VerlBackend + 训练主入口对接）
