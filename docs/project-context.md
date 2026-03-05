@@ -8,10 +8,17 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0 实现完成，已合并到 `main`。**
+**V0 实现完成 + 真实环境验证完成，待训练侧联调。**
 
 - 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
-- 验证结果：`python -m pytest tests/ -v --timeout=120` → `56 passed`
+- 回归验证：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/trajectory -v -p pytest_asyncio.plugin -p pytest_timeout --timeout=120` → `60 passed`
+- 端到端验证：
+  - 脚本：`scripts/run_real_validation.py`（并行 rollout + JSON 输出）
+  - 可视化：`scripts/visualize_trajectories.py`（终端 + HTML 报告）
+  - 最新产物：`artifacts/real_validation_realmode_full.json`、`artifacts/real_validation_realmode_full.html`
+  - 最新模式：`real`（vLLM 实际推理，`n_prompts=5, n_samples=2, max_concurrent=2`）
+  - 结果摘要：`episode=10`、`token_ids_none_turns=0`、`token/logprobs mismatch=0`、`episode_id` 全局唯一
+  - 注：本机检索服务未启用，本轮使用 `search.provider=disabled` 配置做真实推理链路验证
 
 ## 团队分工
 
@@ -43,5 +50,8 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] 制定实施计划
 - [x] 实现 AgentPipe 核心模块
 - [x] DrMAS Search 端到端验证
-- [ ] vLLM token_ids 提取（真实后端响应中的 token ids 对齐与验证）
-- [ ] Episode 并行采样（并发 rollout 编排与稳定性验证）
+- [x] vLLM token_ids 提取链路验证（Monitor/Backend/序列化）
+- [x] Episode 并行采样（并发 rollout 编排与稳定性验证）
+- [x] 真实环境验证脚本与可视化工具落地
+- [ ] 在无临时环境补丁条件下复跑 real vLLM + 检索服务端到端验证
+- [ ] 与训练侧进行联调（VerlBackend + 训练主入口对接）
