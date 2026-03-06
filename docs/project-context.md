@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-05
+> 最后更新：2026-03-06
 
 ## 项目定位
 
@@ -8,17 +8,22 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0 实现完成 + 真实环境验证完成，待训练侧联调。**
+**V0 实现完成 + 真实环境验证通过，待训练侧联调。**
 
 - 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
-- 回归验证：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/trajectory -v -p pytest_asyncio.plugin -p pytest_timeout --timeout=120` → `60 passed`
-- 端到端验证：
+- 回归验证：`python -m pytest tests/ -v --timeout=120` → `60 passed`
+- 端到端验证（2026-03-06，real 模式）：
   - 脚本：`scripts/run_real_validation.py`（并行 rollout + JSON 输出）
-  - 可视化：`scripts/visualize_trajectories.py`（终端 + HTML 报告）
-  - 最新产物：`artifacts/real_validation_realmode_full.json`、`artifacts/real_validation_realmode_full.html`
-  - 最新模式：`real`（vLLM 实际推理，`n_prompts=5, n_samples=2, max_concurrent=2`）
-  - 结果摘要：`episode=10`、`token_ids_none_turns=0`、`token/logprobs mismatch=0`、`episode_id` 全局唯一
-  - 注：本机检索服务未启用，本轮使用 `search.provider=disabled` 配置做真实推理链路验证
+  - 环境：vLLM 0.8.5.post1（GPU 0, RTX 3090）+ Qwen3-4B-Instruct-2507 + OrchRL Search MAS + 检索服务
+  - 配置：`n_prompts=5, n_samples=2, max_concurrent=2`（6 episodes）
+  - 产物：`artifacts/trajectory_real_validation.json`
+  - 五项验证要点全部通过：
+    - `token_ids` 不为 None
+    - `logprobs` 与 `token_ids` 长度一致（0 不一致）
+    - `episode_id` 全局唯一（8 唯一, 2 MAS process exited）
+    - 三 agent（verifier/searcher/answerer）turn 数据完整
+    - reward 在 [0,1] 区间（checker=`is_search_answer_correct`）
+  - VLLMBackend 改进：添加从 logprobs 经 `convert_tokens_to_ids()` 词表反查提取 token_ids作为fallback（兼容vLLM<v0.10，roundtrip 验证通过）
 
 ## 团队分工
 
@@ -63,5 +68,5 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Episode 并行采样（并发 rollout 编排与稳定性验证）
 - [x] 真实环境验证脚本与可视化工具落地
 - [x] 编写训练侧对接规格文档
-- [ ] 在无临时环境补丁条件下复跑 real vLLM + 检索服务端到端验证
+- [x] Real vLLM + 检索服务端到端验证（2026-03-06，5 项验证要点全部通过）
 - [ ] 与训练侧进行联调（VerlBackend + 训练主入口对接）

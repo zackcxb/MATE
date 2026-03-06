@@ -146,6 +146,16 @@ def _safe_json_get(url: str, timeout: float = 5.0) -> tuple[bool, Any, str | Non
         return False, None, str(exc)
 
 
+def _safe_json_post(url: str, payload: dict | None = None, timeout: float = 5.0) -> tuple[bool, Any, str | None]:
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(url, json=payload or {"query": "health_check"})
+            response.raise_for_status()
+            return True, response.json(), None
+    except Exception as exc:
+        return False, None, str(exc)
+
+
 def _load_config(config_path: Path | None) -> tuple[dict[str, Any], str]:
     if config_path is None:
         return _default_config(), "default_inline"
@@ -579,6 +589,8 @@ async def _run(args: argparse.Namespace) -> int:
         }
 
         search_ok, search_payload, search_error = _safe_json_get(args.search_health_url)
+        if not search_ok:
+            search_ok, search_payload, search_error = _safe_json_post(args.search_health_url)
         env_report["search_service"] = {
             "available": search_ok,
             "url": args.search_health_url,
@@ -669,7 +681,14 @@ async def _run(args: argparse.Namespace) -> int:
             backend: InferenceBackend = ScriptedBackend(expected_by_prompt=expected_by_prompt)
             model_mapping = {role: ModelMappingEntry(actual_model=None) for role in roles}
         else:
-            backend = VLLMBackend(backend_url=args.vllm_url, actual_model=model_name)
+            if model_name and Path(model_name).exists():
+                backend = VLLMBackend.with_tokenizer(
+                    backend_url=args.vllm_url,
+                    model_path=model_name,
+                    actual_model=model_name,
+                )
+            else:
+                backend = VLLMBackend(backend_url=args.vllm_url, actual_model=model_name)
             model_mapping = {role: ModelMappingEntry(actual_model=model_name) for role in roles}
 
         pipe_config = AgentPipeConfig(
