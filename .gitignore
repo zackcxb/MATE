@@ -1,0 +1,4 @@
+# 忽略Python编译生成的__pycache__文件夹（所有目录下的都忽略）
+__pycache__/
+
+*.log
