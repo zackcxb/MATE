@@ -15,25 +15,15 @@
 3. `/home/cxb/MATE-reboot/docs/plans/2026-03-04-trajectory-engine-v0-design.md` — V0 架构设计文档
 4. `/home/cxb/multi-agent/docs/multi-agent-rl.pdf` — 团队整体架构 PPT
 
-## 关键设计决策（已锁定）
-
-1. **策略模式**：ModelMonitor 通过 InferenceBackend 接口委托推理，无队列
-2. **agent 身份识别**：`model` 字段即 agent role
-3. **轨迹输出**：`Dict[agent_id, List[TurnData]]`，元数据打全
-4. **MAS 启动**：进程模式，每 episode 独立 Monitor 实例
-5. **Reward**：RewardProvider 协议
-
 ## 当前任务
 
 ### 第一步：全局状态审查
 
 全面检查仓库当前状态：
 1. `git log --oneline --all`：查看所有分支和提交
-2. 检查 `main` 分支上的代码是否是最新的（parallel_rollout 是否已合并）
-3. 运行完整测试套件并报告结果
-4. 检查 `scripts/` 目录是否有真实环境验证脚本和产出
-5. 检查是否有来自其他服务器的新增代码或数据
-6. 列出所有分支及其状态（已合并/未合并）
+2. 检查 `scripts/` 目录是否有真实环境验证脚本和产出
+3. 检查是否有来自其他服务器的新增代码或数据
+4. 列出所有分支及其状态（已合并/未合并）
 
 输出一份完整的项目状态报告，包括：
 - 已完成的功能模块和测试覆盖
@@ -43,24 +33,13 @@
 
 ### 第二步：根据审查结果规划下一步
 
-根据审查发现的实际状态，决定下一步行动：
-
-**如果真实环境验证已完成**：
-- 审查轨迹数据质量
-- 编写训练侧对接规格文档 `docs/plans/2026-03-05-training-integration-spec.md`
-- 参考 `/home/cxb/MATE-reboot/docs/prompts/2026-03-05-real-env-validation-and-integration-prep.md` 中阶段 3 的详细要求
-
-**如果真实环境验证未完成或部分完成**：
-- 根据缺失部分补充完成
-- 参考 `/home/cxb/MATE-reboot/docs/prompts/2026-03-05-real-env-validation-and-integration-prep.md` 中阶段 1-2 的要求
-
-**如果发现代码问题**：
-- 优先修复阻塞问题
-- 更新测试
+- 你的主要任务是根据审查发现的实际状态，决定下一步行动，向用户建议下一步的工作流
+- 只要场景允许，**尽可能建议使用coding agent进行开发，并帮助用户准备Agent工作交接用的Prompt**
+- 在用户提示下一步工作以完成后，对状况进行验收，然后准备下一步规划
 
 ### 第三步：更新项目文档
 
-根据审查和执行结果更新 `docs/project-context.md`，确保项目状态反映真实进展。
+根据审查和执行结果更新 `docs/project-context.md`，确保项目状态反映真实进展。在合适的时候调用/home/cxb/MATE-reboot/skills/skill-agent-self-audit-asset-precipitation.md进行复盘
 
 ## 参考代码位置
 
@@ -76,4 +55,6 @@
 
 - 以 repo 中的代码和文档为 ground truth，不依赖历史对话上下文
 - 遵循 `AGENTS.md` 所有规则
+- 你的工作主要是规划工作流并准备文档和Prompt，尽量不要自己执行任务
+- 使用Superpowers或其他合适的skills
 - 所有回复使用中文
