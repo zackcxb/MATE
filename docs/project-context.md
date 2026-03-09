@@ -8,7 +8,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0 实现完成；真实环境验证通过（含 1 个已定位的长上下文失败样本）；训练侧同事已通过适配方式完成端到端联调；当前重心转向推理侧开发与上库。**
+**V0 已完成并合入 OrchRL 主仓（`1664eb5`）。训练侧同事已通过适配方式完成端到端联调。准备进入 V0.2 设计阶段。**
 
 - 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
 - 回归验证：`pytest tests/trajectory tests/scripts/test_run_real_validation.py -q` → `65 passed`
@@ -77,5 +77,6 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Real vLLM + 检索服务端到端验证（2026-03-09，成功 episode 的五项验证要点已确认）
 - [ ] 处理长上下文样本在 `max_turns=4` 下触发的 vLLM `400/502` 失败
 - [x] 与训练侧进行联调（训练侧同事已通过适配方式带上本仓库代码完成端到端联调）
-- [ ] 整理代码向 OrchRL 仓库提交 PR（不含本地临时文档和产物）
+- [x] 整理代码向 OrchRL 仓库提交 PR（已合入 OrchRL main `1664eb5`，包名 `mate.trajectory` → `trajectory`）
+- [ ] V0.2 设计：确定开发仓库（MATE-reboot vs OrchRL 直接开发）、下一阶段特性范围
 
