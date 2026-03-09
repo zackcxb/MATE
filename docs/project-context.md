@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-06
+> 最后更新：2026-03-09
 
 ## 项目定位
 
@@ -8,22 +8,27 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0 实现完成 + 真实环境验证通过，待训练侧联调。**
+**V0 实现完成 + 真实环境验证已复跑，存在 1 个已定位的长上下文失败样本，待训练侧联调。**
 
 - 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
-- 回归验证：`python -m pytest tests/ -v --timeout=120` → `60 passed`
-- 端到端验证（2026-03-06，real 模式）：
-  - 脚本：`scripts/run_real_validation.py`（并行 rollout + JSON 输出）
-  - 环境：vLLM 0.8.5.post1（GPU 0, RTX 3090）+ Qwen3-4B-Instruct-2507 + OrchRL Search MAS + 检索服务
-  - 配置：`n_prompts=5, n_samples=2, max_concurrent=2`（6 episodes）
-  - 产物：`artifacts/trajectory_real_validation.json`
-  - 五项验证要点全部通过：
-    - `token_ids` 不为 None
-    - `logprobs` 与 `token_ids` 长度一致（0 不一致）
-    - `episode_id` 全局唯一（8 唯一, 2 MAS process exited）
-    - 三 agent（verifier/searcher/answerer）turn 数据完整
-    - reward 在 [0,1] 区间（checker=`is_search_answer_correct`）
-  - VLLMBackend 改进：添加从 logprobs 经 `convert_tokens_to_ids()` 词表反查提取 token_ids作为fallback（兼容vLLM<v0.10，roundtrip 验证通过）
+- 回归验证：`pytest tests/trajectory tests/scripts/test_run_real_validation.py -q` → `65 passed`
+- 真实环境验证（2026-03-09，real 模式）：
+  - 记录：`docs/retros/2026-03-09-trajectory-engine-real-validation.md`
+  - 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:18080/retrieve`）
+  - 在线模型：`/data1/models/Qwen/Qwen3-4B-Instruct-2507`
+  - GPU 约束：`CUDA_VISIBLE_DEVICES=0,1,2,3`（规避 GPU5 故障）
+  - smoke 产物：`artifacts/trajectory_validation_real_smoke_fixed.json`
+  - exact-match 产物：`artifacts/trajectory_validation_exact_match.json`
+  - 多样本产物：`artifacts/trajectory_validation_real_fixed.json`
+  - 已确认：
+    - 成功 episode 上 `token_ids` 不为 None
+    - 成功 episode 上 `logprobs` 与 `token_ids` 长度一致
+    - 成功 episode 的 `episode_id` 全局唯一
+    - 成功 episode 具备 `verifier/searcher/answerer` 完整 turn 数据
+    - reward 解析 bug 已修复，受控 exact-match 样本可稳定得到 `final_reward=1.0`
+  - 已定位限制：
+    - prompt `when is the next deadpool movie being released?` 在 `max_turns=4` 时稳定触发 vLLM `400 -> 502`，导致 MAS exit code 1
+    - 该问题在 `max_turns<=3` 时不复现，属于长上下文失败，不是随机环境抖动
 
 ## 团队分工
 
@@ -58,6 +63,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-04-trajectory-engine-v0-design.md` | 架构设计 | V0 详细设计（已冻结） |
 | `docs/plans/2026-03-04-trajectory-engine-v0-impl-plan.md` | 实施计划 | V0 实施细节 |
 | `docs/plans/2026-03-05-training-integration-spec.md` | 对接规格 | 训练侧联调接口文档 |
+| `docs/retros/2026-03-09-trajectory-engine-real-validation.md` | 验证记录 | 真实环境验证证据、异常样本与根因分析 |
 
 ## 待办
 
@@ -68,5 +74,8 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Episode 并行采样（并发 rollout 编排与稳定性验证）
 - [x] 真实环境验证脚本与可视化工具落地
 - [x] 编写训练侧对接规格文档
-- [x] Real vLLM + 检索服务端到端验证（2026-03-06，5 项验证要点全部通过）
-- [ ] 与训练侧进行联调（VerlBackend + 训练主入口对接）
+- [x] Real vLLM + 检索服务端到端验证（2026-03-09，成功 episode 的五项验证要点已确认）
+- [ ] 处理长上下文样本在 `max_turns=4` 下触发的 vLLM `400/502` 失败
+- [x] 与训练侧进行联调（VerlBackend + 训练主入口对接）
+- [ ] 提取关键代码向OrchRL仓提交PR（不包含本地开发用的临时文档和用例）
+

@@ -1,0 +1,309 @@
+{
+  "schema_version": "1.0",
+  "timestamp": "2026-03-09T03:53:16.246448+00:00",
+  "run_mode": "real",
+  "run_mode_reasons": [],
+  "config_source": "/home/cxb/OrchRL/examples/mas_app/search/configs/search_mas_example.yaml",
+  "environment": {
+    "vllm": {
+      "available": true,
+      "url": "http://127.0.0.1:8000",
+      "error": null,
+      "models": {
+        "object": "list",
+        "data": [
+          {
+            "id": "/data1/models/Qwen/Qwen3-4B-Instruct-2507",
+            "object": "model",
+            "created": 1773028387,
+            "owned_by": "vllm",
+            "root": "/data1/models/Qwen/Qwen3-4B-Instruct-2507",
+            "parent": null,
+            "max_model_len": 4096,
+            "permission": [
+              {
+                "id": "modelperm-94a7ca454c96466991a1aa4a521b95b8",
+                "object": "model_permission",
+                "created": 1773028387,
+                "allow_create_engine": false,
+                "allow_sampling": true,
+                "allow_logprobs": true,
+                "allow_search_indices": false,
+                "allow_view": true,
+                "allow_fine_tuning": false,
+                "organization": "*",
+                "group": null,
+                "is_blocking": false
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "search_service": {
+      "available": true,
+      "url": "http://127.0.0.1:18080/retrieve",
+      "error": null,
+      "payload": {
+        "result": [
+          [
+            {
+              "id": "16878507",
+              "contents": "\"NHS health check\"\nNHS health check NHS health checks are available to people in England between the ages of 40 and 74. The health check consist of an appointment with a healthcare professional at which people are asked about their family history and lifestyle and have their body mass index, blood pressure, and cholesterol concentration measured. Further investigations may then follow. In January 2008, the then prime minister, Gordon Brown, announced “everyone in England will have access to the right preventative health check-up . . . there will soon be check-ups on offer to monitor for heart disease, strokes, diabetes, and kidney disease.”"
+            },
+            {
+              "id": "18639163",
+              "contents": "\"Health Check\"\nHealth Check Health Check was a certification program operated by the Heart and Stroke Foundation of Canada. First established in 1999, the program allowed food products that met predetermined nutritional guidelines to be marketed using a Health Check seal, identifying the product as being endorsed by the Heart and Stroke Foundation. Distributors and restaurants were required to pay a fee to the Heart and Stroke Foundation to license the logo. The Health Check program was discontinued in 2014; the program had been criticized by University of Ottawa professor Yoni Freedhoff for endorsing products with high sugar and sodium contents as"
+            },
+            {
+              "id": "7727491",
+              "contents": "\"Health assessment\"\nHealth assessment A health assessment is a plan of care that identifies the specific needs of a person and how those needs will be addressed by the healthcare system or skilled nursing facility. Health assessment is the evaluation of the health status by performing a physical exam after taking a health history. It is done to detect diseases early in people that may look and feel well. Evidence does not support routine health assessments in otherwise healthy people. Health assessment is the evaluation of the health status of an individual along the health continuum. The purpose of the assessment is"
+            }
+          ]
+        ]
+      }
+    },
+    "prepare_data_script": {
+      "path": "/home/cxb/OrchRL/examples/mas_app/search/scripts/prepare_drmas_search_data.py",
+      "exists": true
+    },
+    "prompts": {
+      "source": "artifacts/trajectory_validation_exact_match.parquet",
+      "available": true,
+      "row_count": 1,
+      "selected_count": 1
+    },
+    "orchrl_runner": {
+      "available": true,
+      "root": "/home/cxb/OrchRL/examples/mas_app/search"
+    },
+    "model_path": {
+      "requested": null,
+      "configured": "/data1/lll/models/Qwen3-4B-Instruct-2507",
+      "resolved": "/data1/models/Qwen/Qwen3-4B-Instruct-2507",
+      "source": "vllm_models[0].id_fallback_from_invalid_config",
+      "exists": true,
+      "available_vllm_models": [
+        "/data1/models/Qwen/Qwen3-4B-Instruct-2507"
+      ]
+    }
+  },
+  "reward_checker_source": "search_mas.apps.search.evaluator.is_search_answer_correct",
+  "input": {
+    "n_prompts": 1,
+    "n_samples": 1,
+    "max_concurrent": 1,
+    "timeout": 180.0,
+    "model": "/data1/models/Qwen/Qwen3-4B-Instruct-2507",
+    "vllm_url": "http://127.0.0.1:8000",
+    "prompts_file": "artifacts/trajectory_validation_exact_match.parquet"
+  },
+  "summary": {
+    "total_episodes": 1,
+    "success_count": 1,
+    "failure_count": 0,
+    "success_rate": 1.0,
+    "avg_turns": 2.0,
+    "agent_call_counts": {
+      "verifier": 1,
+      "answerer": 1
+    },
+    "agent_avg_generated_tokens": {
+      "verifier": 8.0,
+      "answerer": 44.0
+    },
+    "validation": {
+      "unique_episode_ids": true,
+      "token_ids_none_turns": 0,
+      "token_logprobs_length_mismatch_turns": 0,
+      "required_roles": [
+        "verifier",
+        "searcher",
+        "answerer"
+      ],
+      "reward_reasonableness": {
+        "in_unit_interval": true,
+        "min_final_reward": 1.0,
+        "max_final_reward": 1.0
+      }
+    }
+  },
+  "episodes": [
+    {
+      "trajectory": {
+        "episode_id": "24e59820982b45458a6cabbab22d082e",
+        "agent_trajectories": {
+          "verifier": [
+            {
+              "agent_role": "verifier",
+              "turn_index": 0,
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "\n# Task Introduction\nWhat is 6 * 7?\n\n# Your Role\nYou are a \"Verifier Agent\" acting as a router. Your job is to analyze the team's past search queries and retrieved information, then decide whether the current information is enough to answer the question.\n\nYou are now at step 0. Review previous <search> and <information> outputs in team context, reason first, then return exactly one decision tag:\n1) <verify>yes</verify> when information is sufficient.\n2) <verify>no</verify> when information is insufficient.\n\n# Your Teammates' Outputs\n\n"
+                }
+              ],
+              "response_text": "<verify>yes</verify>",
+              "token_ids": [
+                27,
+                12446,
+                29,
+                9693,
+                522,
+                12446,
+                29,
+                151645
+              ],
+              "logprobs": [
+                0.0,
+                -2.622600959512056e-06,
+                -4.768370445162873e-07,
+                -0.005929617211222649,
+                0.0,
+                -8.344646857949556e-07,
+                0.0,
+                0.0
+              ],
+              "finish_reason": "stop",
+              "timestamp": 1773028395.2315116,
+              "metadata": {
+                "episode_id": "24e59820982b45458a6cabbab22d082e",
+                "agent_role": "verifier",
+                "turn_index": 0,
+                "timestamp": 1773028395.2315116
+              }
+            }
+          ],
+          "answerer": [
+            {
+              "agent_role": "answerer",
+              "turn_index": 0,
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "\n# Task Introduction\nWhat is 6 * 7?\n\n# Your Teammates' Outputs\n\nThe output of \"Verifier Agent\": <verify>yes</verify>\n\n\n# Your Role\nYou are an \"Answer Agent\". Synthesize available information and answer the question.\n\nYou MUST reason first in <think>...</think>, and then output the final answer in:\n<answer>your final answer</answer>\n"
+                }
+              ],
+              "response_text": "In order to solve the problem, I will first perform the multiplication:\n\n6 × 7 = 42\n\nThe Verifier Agent has confirmed that the result is correct.\n\n<answer>42</answer>",
+              "token_ids": [
+                641,
+                1973,
+                311,
+                11625,
+                279,
+                3491,
+                11,
+                358,
+                686,
+                1156,
+                2736,
+                279,
+                46444,
+                1447,
+                21,
+                24768,
+                220,
+                22,
+                284,
+                220,
+                19,
+                17,
+                271,
+                785,
+                6250,
+                3049,
+                20713,
+                702,
+                10774,
+                429,
+                279,
+                1102,
+                374,
+                4396,
+                382,
+                27,
+                9217,
+                29,
+                19,
+                17,
+                522,
+                9217,
+                29,
+                151645
+              ],
+              "logprobs": [
+                -0.5799506902694702,
+                -0.04544086754322052,
+                0.0,
+                -0.32583698630332947,
+                -0.025058407336473465,
+                -0.19404342770576477,
+                -0.007879484444856644,
+                -0.0022060361225157976,
+                -0.9987365007400513,
+                -0.22949814796447754,
+                -0.44316816329956055,
+                0.0,
+                -0.0031237637158483267,
+                -0.3994365930557251,
+                0.0,
+                -0.43550315499305725,
+                0.0,
+                0.0,
+                -0.00017379203927703202,
+                0.0,
+                0.0,
+                0.0,
+                -0.04863059148192406,
+                -0.16391783952713013,
+                -0.3248605728149414,
+                0.0,
+                -5.173549288883805e-05,
+                -0.3069857358932495,
+                -0.00017629499780014157,
+                -0.00861463975161314,
+                -2.1457441107486375e-05,
+                -0.006803561467677355,
+                0.0,
+                -9.810443589231e-05,
+                -0.0008754473528824747,
+                -6.198863957251888e-06,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -2.3841855067985307e-07,
+                0.0,
+                0.0
+              ],
+              "finish_reason": "stop",
+              "timestamp": 1773028395.9398558,
+              "metadata": {
+                "episode_id": "24e59820982b45458a6cabbab22d082e",
+                "agent_role": "answerer",
+                "turn_index": 0,
+                "timestamp": 1773028395.9398558
+              }
+            }
+          ]
+        },
+        "metadata": {}
+      },
+      "rewards": {
+        "verifier": 1.0,
+        "answerer": 1.0
+      },
+      "final_reward": 1.0,
+      "metadata": {
+        "exit_code": 0
+      },
+      "checks": {
+        "required_agents_complete": false,
+        "turn_count": 2,
+        "token_ids_none_turns": 0,
+        "token_logprobs_length_mismatch_turns": 0
+      }
+    }
+  ]
+}
