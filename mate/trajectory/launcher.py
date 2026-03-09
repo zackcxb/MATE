@@ -39,6 +39,13 @@ class MASLauncher:
                 role_cfg = {}
                 agents_cfg[role] = role_cfg
             role_cfg["model"] = role
+            role_llm_cfg = role_cfg.get("llm")
+            if role_llm_cfg is None:
+                continue
+            if not isinstance(role_llm_cfg, dict):
+                role_llm_cfg = {}
+                role_cfg["llm"] = role_llm_cfg
+            role_llm_cfg["base_url"] = monitor_url
 
         temp_file = tempfile.NamedTemporaryFile(
             mode="w",
