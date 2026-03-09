@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ast
 import importlib
 import importlib.util
 import json
@@ -121,7 +122,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--search-health-url",
         type=str,
-        default="http://127.0.0.1:18080/health",
+        default="http://127.0.0.1:18080/retrieve",
         help="检索服务健康检查 URL",
     )
     parser.add_argument("--timeout", type=float, default=120.0, help="单 episode 超时时间")
@@ -208,20 +209,55 @@ def _extract_expected(record: dict[str, Any], keys: list[str]) -> Any:
     for key in keys:
         if key not in record:
             continue
-        value = record[key]
+        value = _normalize_expected_value(record[key])
         if value is None:
             continue
         if isinstance(value, str):
-            return value.strip()
+            text = value.strip()
+            if text:
+                return text
+            continue
         if isinstance(value, (list, tuple)):
             values = [str(item).strip() for item in value if str(item).strip()]
             if values:
                 return values
             continue
         if isinstance(value, dict) and "target" in value:
-            return value["target"]
+            target = _normalize_expected_value(value["target"])
+            if target is not None:
+                return target
         return value
     return ""
+
+
+def _normalize_expected_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        if text[0] in "[{(":
+            try:
+                parsed = ast.literal_eval(text)
+            except (SyntaxError, ValueError):
+                return text
+            return _normalize_expected_value(parsed)
+        return text
+    if isinstance(value, list):
+        normalized = [_normalize_expected_value(item) for item in value]
+        return [item for item in normalized if item not in (None, "", [])]
+    if isinstance(value, tuple):
+        normalized = [_normalize_expected_value(item) for item in value]
+        return tuple(item for item in normalized if item not in (None, "", []))
+    if isinstance(value, dict):
+        return {
+            key: _normalize_expected_value(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _expected_to_answer_text(expected: Any) -> str:
@@ -549,7 +585,15 @@ def _build_reward_provider(
             if prompt_hint:
                 break
 
-        expected = expected_by_prompt.get(prompt_hint, "")
+        expected = expected_by_prompt.get(prompt_hint)
+        if expected is None:
+            for key, val in expected_by_prompt.items():
+                if key and key in prompt_hint:
+                    expected = val
+                    break
+            else:
+                expected = ""
+        expected = _normalize_expected_value(expected)
         is_correct = checker(predicted, expected)
         final_reward = 1.0 if is_correct else 0.0
         return {
@@ -575,6 +619,62 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _iter_vllm_model_ids(vllm_payload: Any) -> list[str]:
+    if not isinstance(vllm_payload, dict):
+        return []
+    data = vllm_payload.get("data")
+    if not isinstance(data, list):
+        return []
+    model_ids: list[str] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = item.get("id")
+        if isinstance(model_id, str) and model_id.strip():
+            model_ids.append(model_id.strip())
+    return model_ids
+
+
+def _resolve_model_name(
+    cli_model: str | None,
+    configured_model: str | None,
+    vllm_payload: Any,
+    config_path: Path | None,
+) -> tuple[str | None, str]:
+    if cli_model:
+        return cli_model, "cli"
+
+    available_model_ids = _iter_vllm_model_ids(vllm_payload)
+    resolved_config_path: str | None = None
+    if configured_model:
+        candidate = configured_model.strip()
+        if candidate and config_path is not None and not Path(candidate).is_absolute():
+            resolved_path = (config_path.parent / candidate).resolve()
+            resolved_config_path = str(resolved_path)
+        candidate_variants = [item for item in [configured_model.strip(), resolved_config_path] if item]
+        for candidate_variant in candidate_variants:
+            if candidate_variant in available_model_ids:
+                return candidate_variant, "config"
+
+    if len(available_model_ids) == 1:
+        if configured_model:
+            return available_model_ids[0], "vllm_models[0].id_fallback_from_invalid_config"
+        return available_model_ids[0], "vllm_models[0].id"
+
+    if configured_model:
+        if resolved_config_path and Path(resolved_config_path).exists():
+            return resolved_config_path, "config"
+        candidate = configured_model.strip()
+        if candidate and Path(candidate).exists():
+            return candidate, "config"
+        return configured_model.strip() or None, "config_unverified"
+
+    if available_model_ids:
+        return None, "unresolved_multiple_vllm_models"
+
+    return None, "unresolved"
+
+
 async def _run(args: argparse.Namespace) -> int:
     env_report: dict[str, Any] = {}
     mock_runtime: tempfile.TemporaryDirectory[str] | None = None
@@ -596,12 +696,6 @@ async def _run(args: argparse.Namespace) -> int:
             "url": args.search_health_url,
             "error": search_error,
             "payload": search_payload,
-        }
-
-        default_model_path = Path("/data1/models/Qwen/Qwen3-4B-Instruct-2507")
-        env_report["model_path"] = {
-            "path": str(default_model_path),
-            "exists": default_model_path.exists(),
         }
 
         prepare_script_candidates = [
@@ -675,7 +769,20 @@ async def _run(args: argparse.Namespace) -> int:
 
         llm_cfg = config_template.get("llm") if isinstance(config_template.get("llm"), dict) else {}
         configured_model = llm_cfg.get("model") if isinstance(llm_cfg, dict) else None
-        model_name = args.model or (configured_model if isinstance(configured_model, str) else None)
+        model_name, model_source = _resolve_model_name(
+            cli_model=args.model,
+            configured_model=configured_model if isinstance(configured_model, str) else None,
+            vllm_payload=vllm_payload,
+            config_path=args.config.expanduser().resolve() if args.config is not None else None,
+        )
+        env_report["model_path"] = {
+            "requested": args.model,
+            "configured": configured_model if isinstance(configured_model, str) else None,
+            "resolved": model_name,
+            "source": model_source,
+            "exists": bool(model_name) and Path(model_name).exists(),
+            "available_vllm_models": _iter_vllm_model_ids(vllm_payload),
+        }
 
         if use_mock:
             backend: InferenceBackend = ScriptedBackend(expected_by_prompt=expected_by_prompt)
