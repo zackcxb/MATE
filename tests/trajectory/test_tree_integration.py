@@ -99,6 +99,15 @@ for role in ("verifier", "answerer"):
 
     assert tree_result.pilot_result.status == "success"
     assert tree_result.pilot_result.final_reward == 1.0
+    assert len(tree_result.pilot_result.trajectory.agent_trajectories["verifier"]) == 1
+    assert len(tree_result.pilot_result.trajectory.agent_trajectories["answerer"]) == 1
+    assert (
+        sum(
+            len(turns)
+            for turns in tree_result.pilot_result.trajectory.agent_trajectories.values()
+        )
+        == 2
+    )
     assert len(tree_result.branch_results) == 2
     assert sorted(branch.branch_turn for branch in tree_result.branch_results) == [0, 1]
     assert all(
