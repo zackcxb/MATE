@@ -157,6 +157,7 @@ async def test_tree_rollout_structure(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.tree_metadata["k_branches"] == 1
     assert result.tree_metadata["total_branches_collected"] == 4
     assert [item["cache_size"] for item in branch_calls] == [0, 1, 2, 3]
+    assert sorted(branch.branch_turn for branch in result.branch_results) == [0, 1, 2, 3]
     assert all(item["allow_partial"] is True for item in branch_calls)
     for branch_result in result.branch_results:
         assert branch_result.parent_episode_id == pilot_result.trajectory.episode_id

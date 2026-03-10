@@ -78,7 +78,7 @@ async def tree_rollout(
 
             return BranchResult(
                 episode_result=branch_result,
-                branch_turn=record.turn_index,
+                branch_turn=global_position,
                 branch_agent_role=record.agent_role,
                 parent_episode_id=pilot_result.trajectory.episode_id,
             )
