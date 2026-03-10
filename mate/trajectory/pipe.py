@@ -47,6 +47,7 @@ class AgentPipe:
         )
         launcher = MASLauncher(work_dir=self._config.mas_work_dir)
         primary_error: BaseException | None = None
+        partial_result: EpisodeResult | None = None
 
         try:
             port = await monitor.start(
@@ -76,7 +77,7 @@ class AgentPipe:
                         buffer=monitor.get_buffer(),
                         episode_id=episode_id,
                     )
-                    return EpisodeResult(
+                    partial_result = EpisodeResult(
                         trajectory=trajectory,
                         rewards={},
                         final_reward=None,
@@ -87,6 +88,7 @@ class AgentPipe:
                             "reason": "MAS non-zero exit",
                         },
                     )
+                    return partial_result
                 raise RuntimeError(f"MAS process exited with non-zero exit code {exit_code}")
 
             trajectory = self._collector.build(buffer=monitor.get_buffer(), episode_id=episode_id)
@@ -114,7 +116,7 @@ class AgentPipe:
             except Exception as exc:  # pragma: no cover - exercised via tests
                 cleanup_error = exc
 
-            if primary_error is None:
+            if primary_error is None and partial_result is None:
                 if stop_error is not None:
                     if cleanup_error is not None:
                         stop_error.add_note(f"launcher.cleanup() also failed: {cleanup_error}")
