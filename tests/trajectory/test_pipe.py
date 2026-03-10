@@ -166,6 +166,62 @@ async def test_agent_pipe_run_raises_on_nonzero_exit_code(monkeypatch: pytest.Mo
         await pipe.run(prompt="irrelevant", reward_provider=reward_provider)
 
 
+async def test_pipe_returns_partial_result_on_mas_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeMonitor:
+        def __init__(self, **_kwargs):
+            self._buffer: list[InteractionRecord] = []
+
+        async def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
+            return 19000
+
+        async def stop(self) -> None:
+            return None
+
+        def get_buffer(self) -> list[InteractionRecord]:
+            return self._buffer
+
+    class FakeLauncher:
+        def __init__(self, **_kwargs):
+            pass
+
+        def prepare_config(
+            self,
+            config_template: dict[str, object],
+            monitor_url: str,
+            agent_roles: list[str],
+        ) -> Path:
+            return Path("/tmp/fake.yaml")
+
+        def launch(self, command: str) -> object:
+            return object()
+
+        def wait(self, process: object, timeout: float | None = None) -> int:
+            return 9
+
+        def cleanup(self) -> None:
+            return None
+
+    monkeypatch.setattr(pipe_module, "ModelMonitor", FakeMonitor)
+    monkeypatch.setattr(pipe_module, "MASLauncher", FakeLauncher)
+
+    pipe = AgentPipe(config=_make_config(), backend=EchoBackend())
+    reward_provider = FunctionRewardProvider(_reward_fn)
+
+    result = await pipe.run(
+        prompt="irrelevant",
+        reward_provider=reward_provider,
+        allow_partial=True,
+    )
+
+    assert result.status == "failed"
+    assert result.final_reward is None
+    assert result.failure_info is not None
+    assert result.failure_info["exit_code"] == 9
+    assert result.metadata["exit_code"] == 9
+
+
 async def test_agent_pipe_run_offloads_reward_computation(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeMonitor:
         def __init__(self, **_kwargs):

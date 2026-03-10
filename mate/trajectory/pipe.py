@@ -37,6 +37,7 @@ class AgentPipe:
         self,
         prompt: str,
         reward_provider: RewardProvider,
+        allow_partial: bool = False,
     ) -> EpisodeResult:
         episode_id = uuid.uuid4().hex
         monitor = ModelMonitor(
@@ -70,6 +71,22 @@ class AgentPipe:
                 self._config.timeout,
             )
             if exit_code != 0:
+                if allow_partial:
+                    trajectory = self._collector.build(
+                        buffer=monitor.get_buffer(),
+                        episode_id=episode_id,
+                    )
+                    return EpisodeResult(
+                        trajectory=trajectory,
+                        rewards={},
+                        final_reward=None,
+                        metadata={"exit_code": exit_code},
+                        status="failed",
+                        failure_info={
+                            "exit_code": exit_code,
+                            "reason": "MAS non-zero exit",
+                        },
+                    )
                 raise RuntimeError(f"MAS process exited with non-zero exit code {exit_code}")
 
             trajectory = self._collector.build(buffer=monitor.get_buffer(), episode_id=episode_id)
