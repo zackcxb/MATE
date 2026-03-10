@@ -117,7 +117,7 @@ class ModelMonitor:
         response = None
         replayed = False
         if self._replay_cache is not None:
-            response = self._replay_cache.lookup(agent_role, turn_index)
+            response = self._replay_cache.lookup(agent_role, turn_index, messages)
             replayed = response is not None
 
         if response is None:

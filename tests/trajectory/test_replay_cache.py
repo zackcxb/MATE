@@ -45,6 +45,29 @@ def test_replay_cache_miss() -> None:
     assert cache.lookup("verifier", 1) is None
 
 
+def test_replay_cache_from_buffer_validates_messages_hash() -> None:
+    cache = ReplayCache.from_buffer([_make_record("verifier", 0)])
+
+    assert cache.lookup(
+        "verifier",
+        0,
+        messages=[{"role": "user", "content": "turn 0"}],
+    ) == ModelResponse(
+        content="cached",
+        token_ids=[1, 2, 3],
+        logprobs=[-0.1, -0.2, -0.3],
+        finish_reason="stop",
+    )
+    assert (
+        cache.lookup(
+            "verifier",
+            0,
+            messages=[{"role": "user", "content": "different turn"}],
+        )
+        is None
+    )
+
+
 def test_replay_cache_truncated_at_branch_point() -> None:
     buffer = [
         InteractionRecord(
