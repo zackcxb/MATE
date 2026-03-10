@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import shlex
 import uuid
 from dataclasses import dataclass
@@ -42,7 +43,7 @@ class AgentPipe:
         self._last_buffer: list[InteractionRecord] = []
 
     def last_buffer(self) -> list[InteractionRecord]:
-        return list(self._last_buffer)
+        return copy.deepcopy(self._last_buffer)
 
     async def run(
         self,

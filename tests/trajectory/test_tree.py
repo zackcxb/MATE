@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -297,6 +298,53 @@ async def test_tree_rollout_k_branches_param(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.asyncio
+async def test_tree_rollout_respects_max_concurrent_branches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pilot_buffer = _make_pilot_buffer()
+    pilot_result = _make_episode_result(
+        "pilot-episode",
+        {"verifier": 2, "searcher": 1, "answerer": 1},
+    )
+    branch_counter = 0
+    active_branches = 0
+    max_active_branches = 0
+
+    class FakeAgentPipe:
+        def __init__(self, config, backend, replay_cache=None):
+            self._replay_cache = replay_cache
+
+        async def run(self, prompt, reward_provider, allow_partial=False):
+            nonlocal active_branches, branch_counter, max_active_branches
+            if self._replay_cache is None:
+                return pilot_result
+
+            active_branches += 1
+            max_active_branches = max(max_active_branches, active_branches)
+            await asyncio.sleep(0.05)
+            active_branches -= 1
+            branch_counter += 1
+            return _make_episode_result(f"branch-{branch_counter}", {"verifier": 1})
+
+        def last_buffer(self):
+            return list(pilot_buffer)
+
+    monkeypatch.setattr("mate.trajectory.tree.AgentPipe", FakeAgentPipe)
+
+    result = await tree_rollout(
+        prompt="limit concurrency",
+        reward_provider=FunctionRewardProvider(_reward_fn),
+        config=_make_config(),
+        backend=_DummyBackend(),
+        k_branches=2,
+        max_concurrent_branches=2,
+    )
+
+    assert len(result.branch_results) == 8
+    assert max_active_branches == 2
+
+
+@pytest.mark.asyncio
 async def test_agent_pipe_passes_replay_cache_to_monitor_and_exposes_last_buffer_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -373,6 +421,16 @@ async def test_agent_pipe_passes_replay_cache_to_monitor_and_exposes_last_buffer
     snapshot = pipe.last_buffer()
     assert snapshot == monitor_buffer
     assert snapshot is not monitor_buffer
+    assert snapshot[0] is not monitor_buffer[0]
 
     snapshot.append(_make_record("searcher", 0, 2.0))
     assert pipe.last_buffer() == monitor_buffer
+
+    snapshot[0].response_text = "mutated-response"
+    snapshot[0].messages[0]["content"] = "mutated-message"
+    snapshot[0].metadata["mutated"] = True
+
+    later_snapshot = pipe.last_buffer()
+    assert later_snapshot[0].response_text == "verifier-reply-0"
+    assert later_snapshot[0].messages[0]["content"] == "verifier-0"
+    assert later_snapshot[0].metadata == {}
