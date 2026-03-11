@@ -158,11 +158,6 @@ for branch in branch_results:
 
 方案：**依赖 vLLM 原生 400 错误 + 优雅降级（§3.2）**。Monitor 的 502 响应路径（`_handle_chat_completions` 的 except 分支）已能传递 vLLM 错误信息，AgentPipe 的 `allow_partial` 确保错误不会导致整条 episode 数据丢失。
 
-token 估算策略：
-- 当前实现/建议做法：对即将发送的 `messages` 做粗略预估，使用 `len(json.dumps(messages, sort_keys=True)) // 3` 作为近似 token 数
-- `max_context_tokens` 应来自 backend/model 配置，而不是在 `tree_rollout` 中硬编码；例如读取 backend 暴露的模型上下文上限，或沿用外层 rollout config 中的模型参数
-- 该估算只用于提前发现高风险请求，不替代 backend 的最终裁决；一旦 backend 仍返回上下文过长错误，按 §3.2 降级处理
-
 ### 3.2 优雅降级
 
 当 MAS 进程非正常退出时（如 vLLM 错误导致），需要避免整条 episode 数据完全丢弃。

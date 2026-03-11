@@ -814,9 +814,8 @@ git commit -m "test: add tree_rollout integration test with mock MAS"
 2. **§2.2**：简化为 `tree_rollout` 函数描述，删除 BranchCoordinator/BranchStrategy 策略模式
 3. **§2.3**：添加完整的 uid 赋值规则伪代码，覆盖重放 turn / 分支点 turn / 后续 turn；删除 `shared_prefix_turns` 字段
 4. **§2.3**：添加 messages_hash 规范（sha256 + json.dumps sort_keys）
-5. **§3.1**：明确 token 估算策略（`len(json.dumps(messages)) // 3`）和 `max_context_tokens` 来源
-6. **§3.2**：添加树状分支失败模式矩阵
-7. **§4.1**：添加固定 LLM 调用数的对照实验
+5. **§3.2**：添加树状分支失败模式矩阵
+6. **§4.1**：添加固定 LLM 调用数的对照实验
 
 ### Step 2: Commit
 
