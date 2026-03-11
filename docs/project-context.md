@@ -97,6 +97,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 |------|------|------|
 | `docs/plans/2026-03-09-trajectory-engine-v02-design-direction.md` | 设计方向 | V0.2 核心设计、技术参考、职责边界 |
 | `docs/plans/2026-03-09-trajectory-engine-v02-impl-plan.md` | 实施计划 | 9 个 Task、TDD 步骤、依赖关系 |
+| `docs/plans/2026-03-11-trajectory-public-api-boundary.md` | API 边界 | V0.2 阶段稳定外部 API 与内部/暂不承诺接口划分 |
 | `docs/prompts/2026-03-09-v02-brainstorming.md` | 会话 prompt | V0.2 brainstorming 启动模板 |
 | `docs/prompts/2026-03-09-v02-implementation.md` | 会话 prompt | V0.2 实施会话启动模板 |
 | `docs/prompts/2026-03-09-v02-master-agent.md` | 会话 prompt | V0.2 Master Agent 启动模板（统筹+验证） |
