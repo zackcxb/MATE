@@ -4,8 +4,9 @@ import httpx
 import pytest
 
 from mate.trajectory.backend import InferenceBackend
-from mate.trajectory.datatypes import ModelMappingEntry, ModelRequest, ModelResponse
+from mate.trajectory.datatypes import InteractionRecord, ModelMappingEntry, ModelRequest, ModelResponse
 from mate.trajectory.monitor import ModelMonitor
+from mate.trajectory.replay_cache import ReplayCache
 
 
 class RecordingBackend(InferenceBackend):
@@ -108,6 +109,100 @@ async def test_collects_interaction_record_to_buffer(monitor_server):
     assert record.token_ids == [11, 22, 33]
     assert record.logprobs == [-0.1, -0.2, -0.3]
     assert record.turn_index == 0
+
+
+async def test_monitor_uses_replay_cache():
+    replay_cache = ReplayCache(
+        {
+            (
+                "verifier",
+                0,
+            ): ModelResponse(
+                content="cached-response",
+                token_ids=[10, 20],
+                logprobs=[-0.5, -0.6],
+                finish_reason="stop",
+            )
+        }
+    )
+    backend = RecordingBackend()
+    monitor = ModelMonitor(
+        backend=backend,
+        model_mapping={"verifier": ModelMappingEntry()},
+        replay_cache=replay_cache,
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={
+                    "model": "verifier",
+                    "messages": [{"role": "user", "content": "q"}],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["choices"][0]["message"]["content"] == "cached-response"
+        assert len(backend.requests) == 0
+
+        buffer = monitor.get_buffer()
+        assert len(buffer) == 1
+        record = buffer[0]
+        assert record.response_text == "cached-response"
+        assert record.token_ids == [10, 20]
+        assert record.logprobs == [-0.5, -0.6]
+        assert record.metadata["replayed"] is True
+    finally:
+        await monitor.stop()
+
+
+async def test_monitor_falls_back_to_backend_when_replay_messages_do_not_match():
+    replay_cache = ReplayCache.from_buffer(
+        [
+            InteractionRecord(
+                agent_role="verifier",
+                turn_index=0,
+                timestamp=0.0,
+                messages=[{"role": "user", "content": "pilot prompt"}],
+                generation_params={},
+                response_text="cached-response",
+                token_ids=[10, 20],
+                logprobs=[-0.5, -0.6],
+                finish_reason="stop",
+                episode_id="pilot-001",
+                metadata={},
+            )
+        ]
+    )
+    backend = RecordingBackend()
+    monitor = ModelMonitor(
+        backend=backend,
+        model_mapping={"verifier": ModelMappingEntry()},
+        replay_cache=replay_cache,
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={
+                    "model": "verifier",
+                    "messages": [{"role": "user", "content": "branch prompt"}],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["choices"][0]["message"]["content"] == "echo:verifier"
+        assert len(backend.requests) == 1
+
+        buffer = monitor.get_buffer()
+        assert len(buffer) == 1
+        record = buffer[0]
+        assert record.response_text == "echo:verifier"
+        assert record.metadata.get("replayed") is not True
+    finally:
+        await monitor.stop()
 
 
 async def test_turn_index_increments_for_same_agent(monitor_server):

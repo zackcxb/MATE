@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-09（V0.2 设计完成）
+> 最后更新：2026-03-11（V0.2 实现完成 + 端到端验证通过）
 
 ## 项目定位
 
@@ -8,7 +8,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 设计已完成，进入实施阶段。** V0 已合入 OrchRL 主仓，训练侧已完成端到端联调。V0.2 核心目标：重放式树状分支采样的可行性与收益验证。
+**V0.2 实现已完成，端到端验证通过。** V0 已合入 OrchRL 主仓，训练侧已完成端到端联调。V0.2 核心目标：重放式树状分支采样的可行性与收益验证。
 
 - 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
 - 回归验证：`pytest tests/trajectory tests/scripts/test_run_real_validation.py -q` → `65 passed`
@@ -97,6 +97,8 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-09-trajectory-engine-v02-impl-plan.md` | 实施计划 | 9 个 Task、TDD 步骤、依赖关系 |
 | `docs/prompts/2026-03-09-v02-brainstorming.md` | 会话 prompt | V0.2 brainstorming 启动模板 |
 | `docs/prompts/2026-03-09-v02-implementation.md` | 会话 prompt | V0.2 实施会话启动模板 |
+| `docs/prompts/2026-03-09-v02-master-agent.md` | 会话 prompt | V0.2 Master Agent 启动模板（统筹+验证） |
+| `scripts/USAGE.md` | 用法文档 | 三个验证脚本的参数、输出格式、工作流 |
 
 ## 待办
 
@@ -113,18 +115,50 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] 与训练侧进行联调（训练侧已通过 adapter 方式完成端到端联调）
 - [x] 整理代码向 OrchRL 仓库提交 PR（已合入 OrchRL main `1664eb5`）
 
-### V0.2（进行中）
+### V0.2（实现完成 + 验证通过）
 
 - [x] V0.2 设计：确定开发仓库（MATE-reboot）、特性范围、技术参考调研
 - [x] V0.2 设计审核（APPROVE WITH CHANGES，已融入实施计划）
 - [x] V0.2 实施计划编写（9 个 Task）
-- [ ] Task 1: 数据结构（BranchResult, TreeEpisodeResult, EpisodeResult.status）
-- [ ] Task 2: ReplayCache
-- [ ] Task 3: Monitor replay 支持
-- [ ] Task 4: AgentPipe 优雅降级
-- [ ] Task 5: tree_rollout 函数（核心）
-- [ ] Task 6: Package 导出 + 版本更新（0.1.0 → 0.2.0）
-- [ ] Task 7: 集成测试
-- [ ] Task 8: 设计文档更新（融入审核修正）
+- [x] Task 1: 数据结构（BranchResult, TreeEpisodeResult, EpisodeResult.status）
+- [x] Task 2: ReplayCache
+- [x] Task 3: Monitor replay 支持
+- [x] Task 4: AgentPipe 优雅降级
+- [x] Task 5: tree_rollout 函数（核心）
+- [x] Task 6: Package 导出 + 版本更新（0.1.0 → 0.2.0）
+- [x] Task 7: 集成测试
+- [x] Task 8: 端到端验证脚本 `scripts/run_tree_validation.py`（三轮递进验证 + 对比模式）
+- [x] Task 9: 轨迹可视化支持 V0.2 schema（`scripts/visualize_trajectories.py` 更新）
 - [ ] 同步到 OrchRL + 训练侧 adapter 适配
+
+#### V0.2 真实环境验证（2026-03-11，real 模式）
+
+- 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:8010/retrieve`）
+- 在线模型：`/data1/models/Qwen/Qwen3-4B-Instruct-2507`（Qwen3-4B）
+- 验证脚本：`scripts/run_tree_validation.py`（三轮递进：Smoke → Replay → Multi-prompt）
+- 产物：`artifacts/tree_validation_diag.json` + `artifacts/tree_validation_diag_trajectories.json`（1.5MB）
+
+**验证结果：**
+
+| 轮次 | 结果 | 说明 |
+|------|------|------|
+| Round 1 (Smoke) | PASS | 树结构完整：pilot + 12 branches，所有角色齐全 |
+| Round 2 (Replay) | PASS | 220/220 replay 标记全部正确 |
+| Round 3 (Multi-prompt) | 1/2 PASS | deadpool prompt 失败（V0 已知 long-context 问题，非回归） |
+
+**Trajectory 合理性（238 turns, 39 episodes）：**
+
+| 指标 | 值 | 判定 |
+|------|------|------|
+| token_ids 完整性 | 0/238 缺失 | PASS |
+| token/logprobs 一致性 | 0 不匹配 | PASS |
+| Replay 标记正确性 | 220/220 正确 | PASS |
+| Reward 多样性 | 均值 0.385, σ=0.493, 38.5% success | 有多样性 |
+| 前缀共享率 | ~25%（turn 层面复用 40.9%） | 有效 |
+| 分支多样性 | 1-2/6 分支点产生不同响应 | 合理（temperature 控制） |
+
+**发现的环境兼容问题（已修复）：**
+
+1. OrchRL `agent.py:29` f-string 含反斜杠，Python < 3.12 报 SyntaxError → 已修复为临时变量
+2. `SEARCH_MAS_LLM_BASE_URL` 环境变量会覆盖 AgentPipe monitor URL → 验证脚本在 real 模式下主动 `os.environ.pop`
 

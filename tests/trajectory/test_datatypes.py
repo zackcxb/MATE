@@ -1,4 +1,5 @@
 from mate.trajectory.datatypes import (
+    BranchResult,
     ModelMappingEntry,
     ModelRequest,
     ModelResponse,
@@ -6,6 +7,7 @@ from mate.trajectory.datatypes import (
     TurnData,
     EpisodeTrajectory,
     EpisodeResult,
+    TreeEpisodeResult,
 )
 
 
@@ -85,3 +87,67 @@ def test_episode_result_with_per_turn_rewards():
     )
     assert isinstance(result.rewards["verifier"], list)
     assert isinstance(result.rewards["searcher"], float)
+
+
+def test_branch_result_fields():
+    pilot_result = EpisodeResult(
+        EpisodeTrajectory(episode_id="ep1", agent_trajectories={}, metadata={}),
+        rewards={},
+        final_reward=0.0,
+        metadata={},
+    )
+    branch_result = BranchResult(
+        episode_result=pilot_result,
+        branch_turn=2,
+        branch_agent_role="searcher",
+        parent_episode_id="pilot-001",
+    )
+
+    assert branch_result.episode_result == pilot_result
+    assert branch_result.branch_turn == 2
+    assert branch_result.branch_agent_role == "searcher"
+    assert branch_result.parent_episode_id == "pilot-001"
+
+
+def test_tree_episode_result_fields():
+    pilot_result = EpisodeResult(
+        EpisodeTrajectory(episode_id="pilot-001", agent_trajectories={}, metadata={}),
+        rewards={},
+        final_reward=0.0,
+        metadata={},
+    )
+    branch_episode_result = EpisodeResult(
+        EpisodeTrajectory(episode_id="branch-001", agent_trajectories={}, metadata={}),
+        rewards={},
+        final_reward=0.0,
+        metadata={},
+    )
+    tree_result = TreeEpisodeResult(
+        pilot_result=pilot_result,
+        branch_results=[
+            BranchResult(
+                episode_result=branch_episode_result,
+                branch_turn=2,
+                branch_agent_role="searcher",
+                parent_episode_id="pilot-001",
+            )
+        ],
+        prompt="Find supporting evidence.",
+    )
+
+    assert tree_result.pilot_result == pilot_result
+    assert tree_result.branch_results[0].episode_result == branch_episode_result
+    assert tree_result.prompt == "Find supporting evidence."
+    assert tree_result.tree_metadata == {}
+
+
+def test_episode_result_status_default():
+    result = EpisodeResult(
+        EpisodeTrajectory(episode_id="ep1", agent_trajectories={}, metadata={}),
+        rewards={},
+        final_reward=0.0,
+        metadata={},
+    )
+
+    assert result.status == "success"
+    assert result.failure_info is None

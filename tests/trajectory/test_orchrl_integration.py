@@ -55,6 +55,10 @@ def _reward_on_answer_tag(trajectory: EpisodeTrajectory) -> dict[str, object]:
     }
 
 
+def _probe_output_tail(probe: subprocess.CompletedProcess[str]) -> str:
+    return (probe.stderr or probe.stdout).strip()[-300:]
+
+
 def _ensure_orchrl_runtime_ready() -> None:
     work_dir = Path(ORCHRL_SEARCH_DIR)
     run_script = work_dir / "scripts" / "run_search_mas.py"
@@ -74,11 +78,74 @@ def _ensure_orchrl_runtime_ready() -> None:
         pytest.skip(f"OrchRL environment is not runnable: {exc}")
 
     if probe.returncode != 0:
-        output_tail = (probe.stderr or probe.stdout).strip()[-300:]
         pytest.skip(
             "OrchRL environment probe failed "
-            f"(exit={probe.returncode}): {output_tail}"
+            f"(exit={probe.returncode}): {_probe_output_tail(probe)}"
         )
+
+    try:
+        import_probe = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, '.'); import search_mas.apps.search.app",
+            ],
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.skip(f"OrchRL import probe could not run: {exc}")
+
+    if import_probe.returncode != 0:
+        pytest.skip(
+            "OrchRL import probe failed "
+            f"(exit={import_probe.returncode}): {_probe_output_tail(import_probe)}"
+        )
+
+
+def test_ensure_orchrl_runtime_ready_skips_when_import_probe_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work_dir = tmp_path / "search"
+    run_script = work_dir / "scripts" / "run_search_mas.py"
+    run_script.parent.mkdir(parents=True)
+    run_script.write_text("print('placeholder')\n")
+    monkeypatch.setattr(
+        sys.modules[__name__], "ORCHRL_SEARCH_DIR", str(work_dir)
+    )
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if "--help" in cmd:
+            return subprocess.CompletedProcess(
+                args=cmd,
+                returncode=0,
+                stdout="usage: run_search_mas.py",
+                stderr="",
+            )
+
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=1,
+            stdout="",
+            stderr="SyntaxError: bad import",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(pytest.skip.Exception, match="import probe failed|bad import"):
+        _ensure_orchrl_runtime_ready()
+
+    assert calls[0][-1] == "--help"
+    assert (
+        calls[1][-1]
+        == "import sys; sys.path.insert(0, '.'); import search_mas.apps.search.app"
+    )
 
 
 @pytest.fixture
