@@ -35,6 +35,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from scripts._trajectory_utils import (
+    collect_all_turns as _collect_all_turns,
+    extract_tag as _extract_tag,
+    safe_float as _safe_float,
+)
+
 from mate.trajectory import (
     AgentPipeConfig,
     FunctionRewardProvider,
@@ -342,14 +348,6 @@ def _extract_prompt_from_messages(messages: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def _extract_tag(text: str, tag: str) -> str:
-    pattern = rf"<{tag}>(.*?)</{tag}>"
-    match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-
 def _normalize_text(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", text.strip().lower())
     cleaned = re.sub(r"[\t\n\r]", " ", cleaned)
@@ -540,32 +538,6 @@ def _find_real_runner(config_path: Path | None, explicit_work_dir: Path | None) 
     return None, None
 
 
-def _collect_all_turns(episode_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    turns: list[dict[str, Any]] = []
-    trajectories = episode_payload.get("trajectory", {}).get("agent_trajectories", {})
-    if not isinstance(trajectories, dict):
-        return turns
-    for role, role_turns in trajectories.items():
-        if not isinstance(role_turns, list):
-            continue
-        for turn in role_turns:
-            if not isinstance(turn, dict):
-                continue
-            item = dict(turn)
-            item["agent_role"] = role
-            turns.append(item)
-    def _sort_key(item: dict[str, Any]) -> tuple[float, int]:
-        timestamp = _safe_float(item.get("timestamp", 0.0), default=0.0)
-        try:
-            turn_index = int(item.get("turn_index", 0))
-        except (TypeError, ValueError):
-            turn_index = 0
-        return timestamp, turn_index
-
-    turns.sort(key=_sort_key)
-    return turns
-
-
 def _build_reward_provider(
     expected_by_prompt: dict[str, Any],
     checker: Callable[[str, Any], bool],
@@ -610,13 +582,6 @@ def _safe_mean(values: list[float]) -> float:
     if not values:
         return 0.0
     return float(statistics.mean(values))
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def _iter_vllm_model_ids(vllm_payload: Any) -> list[str]:

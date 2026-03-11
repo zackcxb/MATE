@@ -28,6 +28,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import scripts.run_real_validation as _v0
+from scripts._trajectory_utils import (
+    collect_all_turns as _collect_all_turns,
+    collect_tree_rewards as _collect_tree_rewards,
+    compute_prefix_sharing as _compute_prefix_sharing,
+)
 
 from mate.trajectory import (
     AgentPipeConfig,
@@ -84,7 +89,7 @@ def _validate_tree_structure(tree_payload: dict, roles: list[str]) -> dict:
         issues.append(f"pilot final_reward={pilot_reward} not finite in [0,1]")
 
     # count pilot turns (all turns sorted by timestamp)
-    pilot_turns_list = _v0._collect_all_turns(pilot)
+    pilot_turns_list = _collect_all_turns(pilot)
     pilot_turn_count = len(pilot_turns_list)
     checks["pilot_turn_count"] = pilot_turn_count
 
@@ -152,7 +157,7 @@ def _validate_replay_markers(
     checks: dict[str, Any] = {"branch_turn": branch_turn}
 
     br_ep = branch_payload.get("episode_result", {})
-    branch_turns = _v0._collect_all_turns(br_ep)
+    branch_turns = _collect_all_turns(br_ep)
     checks["branch_total_turns"] = len(branch_turns)
 
     replayed_count = 0
@@ -202,31 +207,6 @@ def _validate_replay_markers(
     return checks
 
 
-def _compute_prefix_sharing(tree_payload: dict) -> dict:
-    """replayed_tokens / total_branch_tokens."""
-    branches = tree_payload.get("branch_results", [])
-    total_tokens = 0
-    replayed_tokens = 0
-
-    for branch in branches:
-        br_ep = branch.get("episode_result", {})
-        branch_turns = _v0._collect_all_turns(br_ep)
-        for turn in branch_turns:
-            tids = turn.get("token_ids")
-            n = len(tids) if isinstance(tids, list) else 0
-            total_tokens += n
-            metadata = turn.get("metadata", {})
-            if metadata.get("replayed") is True:
-                replayed_tokens += n
-
-    rate = replayed_tokens / total_tokens if total_tokens > 0 else 0.0
-    return {
-        "replayed_tokens": replayed_tokens,
-        "total_branch_tokens": total_tokens,
-        "prefix_sharing_rate": rate,
-    }
-
-
 def _compute_reward_stats(rewards: list[float]) -> dict:
     """mean, variance, min, max, success_rate."""
     if not rewards:
@@ -242,19 +222,6 @@ def _compute_reward_stats(rewards: list[float]) -> dict:
         "success_rate": sum(1 for r in rewards if r == 1.0) / len(rewards),
         "count": len(rewards),
     }
-
-
-def _collect_tree_rewards(tree_payload: dict) -> list[float]:
-    """Gather all finite rewards from pilot + branches."""
-    rewards: list[float] = []
-    pilot_r = tree_payload.get("pilot_result", {}).get("final_reward")
-    if pilot_r is not None and isinstance(pilot_r, (int, float)) and math.isfinite(pilot_r):
-        rewards.append(float(pilot_r))
-    for branch in tree_payload.get("branch_results", []):
-        br_r = branch.get("episode_result", {}).get("final_reward")
-        if br_r is not None and isinstance(br_r, (int, float)) and math.isfinite(br_r):
-            rewards.append(float(br_r))
-    return rewards
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +323,7 @@ async def _run_round_replay(
 
     # build pilot turns by global position
     pilot_ep = tree_payload.get("pilot_result", {})
-    pilot_turns_by_position = _v0._collect_all_turns(pilot_ep)
+    pilot_turns_by_position = _collect_all_turns(pilot_ep)
 
     # validate replay markers on each branch
     branch_validations: list[dict] = []
@@ -421,7 +388,7 @@ async def _run_round_multi_prompt(
             struct = _validate_tree_structure(tp, roles)
 
             # replay markers
-            pilot_turns_pos = _v0._collect_all_turns(tp.get("pilot_result", {}))
+            pilot_turns_pos = _collect_all_turns(tp.get("pilot_result", {}))
             replay_checks: list[dict] = []
             for bidx, br in enumerate(tp.get("branch_results", [])):
                 rv = _validate_replay_markers(br, br.get("branch_turn", 0), pilot_turns_pos)

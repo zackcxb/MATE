@@ -8,11 +8,13 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 实现已完成，端到端验证通过。** V0 已合入 OrchRL 主仓，训练侧已完成端到端联调。V0.2 核心目标：重放式树状分支采样的可行性与收益验证。
+**V0.2 实现已完成，MATE-reboot 侧验证通过。** 当前基线分支为 `main`；截至 2026-03-11，本仓回归测试为 `pytest tests/trajectory tests/scripts -q` → `91 passed`。V0.2 核心目标已经在采集侧完成：验证重放式树状分支采样的可行性、正确性和基础收益信号。
 
-- 合并提交：`bcb5b25`（`merge: trajectory engine v0 implementation (56 tests passing)`）
-- 回归验证：`pytest tests/trajectory tests/scripts/test_run_real_validation.py -q` → `65 passed`
-- 真实环境验证（2026-03-09，real 模式）：
+- 当前状态：
+  - MATE-reboot 采集侧已具备 `tree_rollout`、`ReplayCache`、V0.2 验证脚本和可视化支持
+  - OrchRL 训练侧当前仍通过 adapter + `VLLMBackend` 集成 MATE，不使用 `AsyncLLMServerManager` 直连路径
+  - OrchRL 侧尚未完成 `tree_rollout` / `TreeEpisodeResult` 消费链路，这是当前唯一未闭环项
+- V0 真实环境验证（2026-03-09，real 模式）：
   - 记录：`docs/retros/2026-03-09-trajectory-engine-real-validation.md`
   - 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:18080/retrieve`）
   - 在线模型：`/data1/models/Qwen/Qwen3-4B-Instruct-2507`
@@ -86,7 +88,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-02-marl-grpo-v0-directions.md` | 方向设计 | V0 方向评估 |
 | `docs/plans/2026-03-04-trajectory-engine-v0-design.md` | 架构设计 | V0 详细设计（已冻结） |
 | `docs/plans/2026-03-04-trajectory-engine-v0-impl-plan.md` | 实施计划 | V0 实施细节 |
-| `docs/plans/2026-03-05-training-integration-spec.md` | 对接规格 | 训练侧联调接口文档 |
+| `docs/plans/2026-03-05-training-integration-spec.md` | 对接规格（历史） | V0 阶段直连 `VerlBackend` 设想；当前 OrchRL 实际路径是 adapter + `VLLMBackend` |
 | `docs/retros/2026-03-09-trajectory-engine-real-validation.md` | 验证记录 | 真实环境验证证据、异常样本与根因分析 |
 
 ### V0.2
@@ -161,4 +163,3 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 1. OrchRL `agent.py:29` f-string 含反斜杠，Python < 3.12 报 SyntaxError → 已修复为临时变量
 2. `SEARCH_MAS_LLM_BASE_URL` 环境变量会覆盖 AgentPipe monitor URL → 验证脚本在 real 模式下主动 `os.environ.pop`
-

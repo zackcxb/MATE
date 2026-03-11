@@ -1,9 +1,23 @@
 # 训练侧对接规格文档
 
 > 日期：2026-03-05
-> 状态：待训练侧确认
+> 状态：历史规格（V0 直连设想，未按此路径落地）
 > 前序文档：`2026-03-04-trajectory-engine-v0-design.md`
 > 验证产物：`artifacts/real_validation_realmode_full.json`
+
+---
+
+## 状态说明
+
+本文档记录的是 **V0 阶段曾计划采用的训练侧直连方案**：由训练主循环直接构造 `VerlBackend(server_manager, tokenizer)` 并注入 `AgentPipe`。
+
+截至 2026-03-11，OrchRL 实际已落地的集成路径不是这条直连方案，而是：
+
+1. OrchRL trainer 侧维护 rollout engine / server addresses
+2. `mate_rollout_adapter.py` 将 server address 传给 MATE
+3. MATE 侧通过 `VLLMBackend` + HTTP monitor 代理完成采集
+
+因此，本文对理解当时的接口设想仍有参考价值，但**不应再视为当前实现状态**。若后续决定改回 `AsyncLLMServerManager` 直连，可把这里的 `VerlBackend` 契约视为 future design baseline。
 
 ---
 

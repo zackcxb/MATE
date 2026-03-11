@@ -13,11 +13,24 @@ import argparse
 import html as html_mod
 import json
 import math
-import re
 import statistics
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from scripts._trajectory_utils import (
+    build_integrity_report as _build_integrity_report,
+    collect_all_turns as _flatten_turns,
+    collect_all_turns as _v2_collect_all_turns,
+    collect_tree_rewards as _v2_collect_tree_rewards,
+    compute_prefix_sharing as _v2_prefix_sharing,
+    extract_tag as _extract_tag,
+    is_token_logprob_consistent as _is_token_logprob_consistent,
+    message_len as _message_len,
+    preview_text as _preview,
+    safe_float as _safe_float,
+    safe_int as _safe_int,
+    timeline_lines as _timeline_lines,
+)
 
 RED = "\033[31m"
 YELLOW = "\033[33m"
@@ -36,124 +49,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--html", type=Path, default=None, help="可选 HTML 报告输出路径")
     parser.add_argument("--limit", type=int, default=5, help="最多展示多少条 episode/branch/tree")
     return parser.parse_args()
-
-
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-def _extract_tag(text: str, tag: str) -> str:
-    match = re.search(rf"<{tag}>(.*?)</{tag}>", text, flags=re.IGNORECASE | re.DOTALL)
-    if not match:
-        return ""
-    return match.group(1).strip()
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _preview(text: str, limit: int = 60) -> str:
-    compact = re.sub(r"\s+", " ", text).strip()
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 3] + "..."
-
-
-def _flatten_turns(episode: dict[str, Any]) -> list[dict[str, Any]]:
-    trajectories = episode.get("trajectory", {}).get("agent_trajectories", {})
-    turns: list[dict[str, Any]] = []
-    if not isinstance(trajectories, dict):
-        return turns
-    for role, role_turns in trajectories.items():
-        if not isinstance(role_turns, list):
-            continue
-        for turn in role_turns:
-            if not isinstance(turn, dict):
-                continue
-            item = dict(turn)
-            item["agent_role"] = role
-            turns.append(item)
-    turns.sort(key=lambda x: (_safe_float(x.get("timestamp", 0.0)), _safe_int(x.get("turn_index", 0))))
-    return turns
-
-
-def _message_len(turn: dict[str, Any]) -> int:
-    messages = turn.get("messages")
-    return len(messages) if isinstance(messages, list) else 0
-
-
-def _is_token_logprob_consistent(turn: dict[str, Any]) -> tuple[bool, int | None, int | None]:
-    token_ids = turn.get("token_ids")
-    logprobs = turn.get("logprobs")
-    token_len = len(token_ids) if isinstance(token_ids, list) else None
-    logprob_len = len(logprobs) if isinstance(logprobs, list) else None
-    if token_len is None or logprob_len is None:
-        return False, token_len, logprob_len
-    return token_len == logprob_len, token_len, logprob_len
-
-
-def _build_integrity_report(episode: dict[str, Any]) -> dict[str, Any]:
-    turns = _flatten_turns(episode)
-    token_ids_none_turns = 0
-    mismatch_turns = 0
-
-    context_monotonic_by_agent: dict[str, bool] = {}
-    by_agent: dict[str, list[dict[str, Any]]] = defaultdict(list)
-
-    for turn in turns:
-        by_agent[turn["agent_role"]].append(turn)
-        if turn.get("token_ids") is None:
-            token_ids_none_turns += 1
-        is_ok, _, _ = _is_token_logprob_consistent(turn)
-        if not is_ok:
-            mismatch_turns += 1
-
-    for role, role_turns in by_agent.items():
-        role_turns.sort(key=lambda x: int(x.get("turn_index", 0)))
-        msg_sizes = [_message_len(turn) for turn in role_turns]
-        is_monotonic = all(a <= b for a, b in zip(msg_sizes, msg_sizes[1:]))
-        context_monotonic_by_agent[role] = is_monotonic
-
-    return {
-        "token_ids_none_turns": token_ids_none_turns,
-        "token_logprobs_mismatch_turns": mismatch_turns,
-        "context_monotonic_by_agent": context_monotonic_by_agent,
-    }
-
-
-def _timeline_lines(episode: dict[str, Any], preview_limit: int = 60) -> list[str]:
-    turns = _flatten_turns(episode)
-    lines: list[str] = []
-    for idx, turn in enumerate(turns):
-        role = turn.get("agent_role", "unknown")
-        text = str(turn.get("response_text", ""))
-        detail = ""
-
-        verify = _extract_tag(text, "verify")
-        search = _extract_tag(text, "search")
-        answer = _extract_tag(text, "answer")
-
-        if verify:
-            detail = f"decision={verify}"
-        elif search:
-            detail = f"query={search}"
-        elif answer:
-            detail = f"answer={answer}"
-
-        suffix = f" ({detail})" if detail else ""
-        lines.append(f"  [{idx}] {role} -> \"{_preview(text, preview_limit)}\"{suffix}")
-    return lines
 
 
 # ---------------------------------------------------------------------------
@@ -328,46 +223,6 @@ def _compute_extra_stats_v1(payload: dict[str, Any]) -> dict[str, float]:
 # ===================================================================
 # V0.2 helpers
 # ===================================================================
-
-def _v2_collect_all_turns(episode_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Flatten episode_result (or pilot_result) into sorted turn list."""
-    return _flatten_turns(episode_payload)
-
-
-def _v2_collect_tree_rewards(tree_payload: dict[str, Any]) -> list[float]:
-    rewards: list[float] = []
-    pilot_r = tree_payload.get("pilot_result", {}).get("final_reward")
-    if pilot_r is not None and isinstance(pilot_r, (int, float)) and math.isfinite(pilot_r):
-        rewards.append(float(pilot_r))
-    for branch in tree_payload.get("branch_results", []):
-        br_r = branch.get("episode_result", {}).get("final_reward")
-        if br_r is not None and isinstance(br_r, (int, float)) and math.isfinite(br_r):
-            rewards.append(float(br_r))
-    return rewards
-
-
-def _v2_prefix_sharing(tree_payload: dict[str, Any]) -> dict[str, Any]:
-    """replayed_tokens / total_branch_tokens."""
-    branches = tree_payload.get("branch_results", [])
-    total_tokens = 0
-    replayed_tokens = 0
-    for branch in branches:
-        br_ep = branch.get("episode_result", {})
-        branch_turns = _v2_collect_all_turns(br_ep)
-        for turn in branch_turns:
-            tids = turn.get("token_ids")
-            n = len(tids) if isinstance(tids, list) else 0
-            total_tokens += n
-            metadata = turn.get("metadata", {})
-            if metadata.get("replayed") is True:
-                replayed_tokens += n
-    rate = replayed_tokens / total_tokens if total_tokens > 0 else 0.0
-    return {
-        "replayed_tokens": replayed_tokens,
-        "total_branch_tokens": total_tokens,
-        "prefix_sharing_rate": rate,
-    }
-
 
 def _v2_tree_terminal_lines(
     tree_payload: dict[str, Any],

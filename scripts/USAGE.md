@@ -19,8 +19,8 @@
     ┌──────▼──────────┐  ┌─────▼─────────────────────────┐
     │ visualize_      │  │ run_tree_validation.py (V0.2)  │
     │ trajectories.py │  │ tree_rollout 树状分支验证       │
-    │ 终端/HTML 报告   │  │ 复用 V0.1 ~15 个基础函数       │
-    │ (仅支持 v1.0)   │  │ 输出: schema v2.0 JSON         │
+    │ 终端/HTML 报告   │  │ 共享脚本级 runtime/helper      │
+    │ (支持 v1.0/v2.0)│  │ 输出: schema v2.0 JSON         │
     └─────────────────┘  └───────────────────────────────┘
 ```
 
@@ -39,7 +39,7 @@
 | 服务 | 默认地址 | 启动方式 | 缺失时行为 |
 |------|----------|----------|-----------|
 | vLLM | `http://127.0.0.1:8000` | `bash ~/local_scripts/start_vllm.sh` | 自动回退 mock 模式 |
-| 检索服务 | `http://127.0.0.1:8010/retrieve` | `bash ~/local_scripts/start_searchr1_retrieval.sh` | 自动回退 mock 模式 |
+| 检索服务 | `run_real_validation.py`: `http://127.0.0.1:18080/retrieve`；`run_tree_validation.py`: `http://127.0.0.1:8010/retrieve` | `bash ~/local_scripts/start_searchr1_retrieval.sh` | 自动回退 mock 模式 |
 
 ### 环境变量
 
@@ -264,7 +264,7 @@ python scripts/visualize_trajectories.py \
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--input` | **必需** | V0.1 输出的 JSON 文件路径 |
-| `--limit` | `10` | 终端显示的最大 episode 数 |
+| `--limit` | `5` | 终端显示的最大 episode / branch / tree 数 |
 | `--html` | 无 | 生成 HTML 报告的输出路径 |
 
 ### 检查项

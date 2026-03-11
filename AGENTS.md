@@ -66,13 +66,13 @@ Frequency guard:
 
 1. At most one explanation per task/PR scope unless the scope changes materially or user requested.
 
-Skill: skill-quick-code-change-explanation
+Skill: skills/skill-quick-code-change-explanation.md
 
 ## 5. Blackbox Retrospective Rule
 
 Goal: make hidden decision logic fully explicit so another engineer can replay the full execution flow.
 
-Skill: skill-agent-self-audit-asset-precipitation
+Skill: skills/skill-agent-self-audit-asset-precipitation.md
 
 Frequency guard:
 
@@ -106,11 +106,35 @@ Governance frequency:
 4. Do not force-push `main`; avoid destructive history rewrites on shared branches.
 5. Never commit secrets or large local artifacts.
 
-## 9. Objectivity Rule
+## 9. Execution Handoff Rule
+
+Before starting a meaningful task, decide which execution venue best fits the work:
+
+1. complete in the current window directly
+2. complete in the current window with subagents
+3. complete in a separate window/worktree
+
+Decision factors:
+
+1. current context coverage and whether loading more context here would create confusion
+2. repository scope and whether the task crosses repo/worktree boundaries
+3. need for isolation, long-running execution, or a distinct review/verification loop
+4. whether the task is implementation-heavy enough to benefit from a fresh execution session
+
+If a separate window/worktree is the better fit, the current agent must prepare the handoff before asking the user to switch:
+
+1. summarize the goal, current state, constraints, and success criteria
+2. identify exact repos/workdirs, files, and reference docs to read first
+3. state the preferred workflow (same-window subagents vs new window) and why
+4. provide a ready-to-use handoff prompt when the task is non-trivial or likely to be reused
+
+Do not offload work with only a vague suggestion to "open a new window". The originating agent is responsible for making the transition concrete.
+
+## 10. Objectivity Rule
 
 When answering questions, evaluating trade-offs, or proposing designs, provide objective assessments based on technical merit. Do not align with the user's apparent preference or prior decisions unless the evidence supports them. If the user's inclination has technical downsides, state them clearly. Agreeing for the sake of agreement wastes time and produces worse designs.
 
-## 10. Conflict Resolution Order
+## 11. Conflict Resolution Order
 
 When instructions conflict, resolve by scope and specificity:
 
