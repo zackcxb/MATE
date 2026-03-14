@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-11（V0.2 实现完成 + 端到端验证通过）
+> 最后更新：2026-03-14（MATE 侧材料更新 + OrchRL tree smoke 迁移交接）
 
 ## 项目定位
 
@@ -8,12 +8,14 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 实现已完成，MATE-reboot 侧验证通过。** 当前基线分支为 `main`；截至 2026-03-11，本仓回归测试为 `pytest tests/trajectory tests/scripts -q` → `91 passed`。V0.2 核心目标已经在采集侧完成：验证重放式树状分支采样的可行性、正确性和基础收益信号。
+**V0.2 实现已完成，MATE-reboot 侧验证通过。** 当前基线分支为 `main`；截至 2026-03-14，本仓回归测试为 `python -m pytest tests/trajectory tests/scripts -q` → `90 passed, 1 skipped`。V0.2 核心目标已经在采集侧完成：验证重放式树状分支采样的可行性、正确性和基础收益信号。
 
 - 当前状态：
   - MATE-reboot 采集侧已具备 `tree_rollout`、`ReplayCache`、V0.2 验证脚本和可视化支持
   - OrchRL 训练侧当前仍通过 adapter + `VLLMBackend` 集成 MATE，不使用 `AsyncLLMServerManager` 直连路径
-  - OrchRL 侧尚未完成 `tree_rollout` / `TreeEpisodeResult` 消费链路，这是当前唯一未闭环项
+  - OrchRL 侧 `tree_rollout` / `TreeEpisodeResult` 消费闭环代码已在独立 worktree 完成，本地测试通过；尚未合入主工作区
+  - 真实 tree smoke 已推进到 `tree_rollout -> pilot_pipe.run(...)`，当前 blocker 已下沉到 Search MAS 子进程 / 当前服务器硬件环境，而不是已知 MATE blocker
+  - 当前操作优先级不是继续做 MATE 结构性改造，而是在新服务器完成真实 tree smoke 并根据结果决定是否需要新的 MATE 修补
 - V0 真实环境验证（2026-03-09，real 模式）：
   - 记录：`docs/retros/2026-03-09-trajectory-engine-real-validation.md`
   - 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:18080/retrieve`）
@@ -98,9 +100,12 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-09-trajectory-engine-v02-design-direction.md` | 设计方向 | V0.2 核心设计、技术参考、职责边界 |
 | `docs/plans/2026-03-09-trajectory-engine-v02-impl-plan.md` | 实施计划 | 9 个 Task、TDD 步骤、依赖关系 |
 | `docs/plans/2026-03-11-trajectory-public-api-boundary.md` | API 边界 | V0.2 阶段稳定外部 API 与内部/暂不承诺接口划分 |
+| `docs/plans/2026-03-13-tokenization-drift-analysis.md` | 技术分析 | 推理侧与训练侧 tokenization drift 风险分析 |
+| `docs/retros/2026-03-11-orchrl-tree-adapter-sync.md` | 联调进展 | OrchRL tree adapter 接入状态、本地测试结果、smoke 阻塞点 |
 | `docs/prompts/2026-03-09-v02-brainstorming.md` | 会话 prompt | V0.2 brainstorming 启动模板 |
 | `docs/prompts/2026-03-09-v02-implementation.md` | 会话 prompt | V0.2 实施会话启动模板 |
 | `docs/prompts/2026-03-09-v02-master-agent.md` | 会话 prompt | V0.2 Master Agent 启动模板（统筹+验证） |
+| `docs/prompts/2026-03-14-mate-tree-smoke-handoff.md` | 会话 prompt | 新服务器 MATE Agent 交接 prompt（真实 tree smoke 支持） |
 | `scripts/USAGE.md` | 用法文档 | 三个验证脚本的参数、输出格式、工作流 |
 
 ## 待办
@@ -132,7 +137,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Task 7: 集成测试
 - [x] Task 8: 端到端验证脚本 `scripts/run_tree_validation.py`（三轮递进验证 + 对比模式）
 - [x] Task 9: 轨迹可视化支持 V0.2 schema（`scripts/visualize_trajectories.py` 更新）
-- [ ] 同步到 OrchRL + 训练侧 adapter 适配
+- [ ] 在新服务器完成 OrchRL tree 模式真实 smoke，并据结果决定 OrchRL worktree 合并与是否需要新的 MATE blocker 修补
 
 #### V0.2 真实环境验证（2026-03-11，real 模式）
 
