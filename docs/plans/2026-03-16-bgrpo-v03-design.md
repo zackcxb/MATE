@@ -182,7 +182,7 @@ SearchMAS, K=3, pilot 有 4 个 turns：
 | 2 | `mate_dataproto_adapter.py` | UID 方案修复 + skip_turn_predicate 做法 C + prompt_ids 优先消费 |
 | 3 | `mate_rollout_adapter.py`（可能） | 确保 VLLMBackend 有 tokenizer |
 
-完成标准：现有 OrchRL tree 测试回归 + 新增 GRPO 分组正确性测试。
+完成标准：现有 OrchRL tree 测试回归 + 新增 GRPO 分组正确性测试 + Level 3a 8 卡短跑诊断通过。
 
 ## 7. 验证策略
 
@@ -200,9 +200,20 @@ SearchMAS, K=3, pilot 有 4 个 turns：
 - Loss 数值合理（非 NaN/Inf）
 - prompt_ids 在 TurnData 中非 None（tokenizer 可用时）
 
-### Level 3 — 收益验证（后续，非 V0.3 scope）
+### Level 3a — 8 卡短跑诊断（V0.3 完成标准）
 
-Tree mode (BGRPO) vs Parallel mode (标准 GRPO) 在相同 LLM 调用预算下的 reward 对比。
+SearchMAS, BGRPO, 50-100 training steps，8 卡环境。诊断指标：
+
+1. **Reward 趋势**：episode reward 均值是否有上升趋势（或至少不是完全平坦/发散）
+2. **Advantage 分布**：GRPO group 内的 advantage 是否有方差（全零说明分组有问题）
+3. **分支点 loss 贡献**：只有分支点 turn 贡献了梯度（做法 C 正确性）
+4. **prompt_ids 一致性**：抽样对比 MATE 存储的 prompt_ids 与 OrchRL fallback tokenize 的结果
+
+通过标准：上述 4 项均无异常。不要求 reward 必须上升（50-100 steps 可能不够），但要求**无明显 bug 信号**（reward 发散、advantage 全零、loss NaN）。
+
+### Level 3b — 完整对比实验（后续，非 V0.3 scope）
+
+Tree mode (BGRPO) vs Parallel mode (标准 GRPO) 在相同 LLM 调用预算下的 reward 对比，多 seed。
 
 ## 8. 向后兼容
 
