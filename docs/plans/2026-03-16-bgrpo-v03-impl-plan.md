@@ -1,168 +1,189 @@
-# V0.3 Implementation Plan (Reset): MATE Token-Drift First
+# V0.3 Pre-Plan Reset: Brainstorming Agenda For VerlBackend And Drift Research
 
-> Status: **Brainstorming reset -> execution-ready plan**  
+> Status: **Pre-plan only; do not execute as implementation checklist yet**
 > Date: 2026-03-17  
-> Scope: **MATE only**
+> Scope: **Prepare next-window brainstorming and decision checkpoints**
 
-## 1. 目标与边界
+## 1. Why This Is A Pre-Plan
 
-### 1.1 本迭代目标
+当前 V0.3 还没有经过新一轮设计确认，因此本文件不再把自己表述为“execution-ready implementation plan”。
 
-1. 在 MATE 侧落地 `prompt_ids` 数据合同，降低 token drifting 风险。
-2. 产出 `global_turn_index` 必要性的证据化结论（Promote/Defer）。
+本文件的作用是：
 
-### 1.2 本迭代不做
+1. 明确下一窗口 brainstorming 应该完成哪些决策
+2. 把后续可能进入实现的工作拆成可讨论的工作包
+3. 避免在问题尚未定义清楚时直接进入编码
 
-1. OrchRL 侧实现与配置改动（由同事负责）。
-2. BGRPO 分组逻辑改造。
-3. 跨仓联动重构。
+## 2. Decision Gates
 
-## 2. 执行策略
+在进入实现前，必须完成以下 gate：
 
-按“先合同、再验证、后决策”的顺序执行。
+### Gate 1: `VerlBackend` Positioning
 
-1. **Phase A**：`prompt_ids` 合同链路实现（MATE 内闭环）。
-2. **Phase B**：token-drift 验证与可观测性增强。
-3. **Phase C**：`global_turn_index` 必要性评估并给出结论。
+必须明确：
 
-## 3. Phase A — prompt_ids 合同链路
+1. `VerlBackend` 是新增 backend、恢复旧设计，还是升级为主契约路径
+2. 它与 `VLLMBackend` 的职责分工是什么
+3. `messages` 与 `prompt_ids` 的输入边界是什么
 
-### A1. 数据结构扩展
+### Gate 2: Token-Drift Research Spec
 
-改动文件：
+必须明确：
 
-1. `mate/trajectory/datatypes.py`
+1. 要研究哪些 drift 风险
+2. 需要记录哪些 runtime artifacts
+3. 成功标准是什么
+4. 哪些风险属于必须修复，哪些仅记录为限制
 
-任务：
+### Gate 3: Output Contract Choice
 
-- [ ] `ModelResponse` 增加 `prompt_ids: list[int] | None = None`
-- [ ] `InteractionRecord` 增加 `prompt_ids: list[int] | None = None`
-- [ ] `TurnData` 增加 `prompt_ids: list[int] | None = None`
+必须明确：
 
-验收：
+1. 是否提供 `DataProto` 输出选项
+2. 若提供，是 primary output、optional exporter，还是 sidecar adapter
+3. `rollout_routed_expert` 是否纳入 V0.3 合同
 
-- [ ] 相关类型构造与序列化路径测试通过
+### Gate 4: Turn Ordering Decision
 
-### A2. backend 生成 prompt_ids
+必须明确：
 
-改动文件：
+1. `global_turn_index` 是核心合同字段还是次级诊断字段
+2. 它与 replay/alignment/branch 语义的真实依赖关系
 
-1. `mate/trajectory/backend.py`
+## 3. Recommended Brainstorming Work Packages
 
-任务：
+### WP1. Establish The Architecture Baseline
 
-- [ ] tokenizer 可用时，基于与推理一致的 chat template 生成 `prompt_ids`
-- [ ] tokenizer 不可用时返回 `None`
-- [ ] 不改变现有请求 payload 与生成路径
+输入材料：
 
-验收：
+1. `docs/plans/2026-03-04-trajectory-engine-v0-design.md`
+2. `mate/trajectory/backend.py`
+3. `mate/trajectory/monitor.py`
+4. `/home/cxb/rl_framework/verl/recipe/swe_agent/model_proxy.py`
+5. `/home/cxb/rl_framework/verl/recipe/swe_agent/swe_agent_loop.py`
+6. `/home/cxb/rl_framework/verl/recipe/swe_agent/trajectory.py`
 
-- [ ] 有/无 tokenizer 两条路径均有单测
+需要回答：
 
-### A3. monitor / collector 透传
+1. 现有 backend abstraction 是否足以承载 direct token backend
+2. replay/alignment 能力缺哪些最小部件
+3. 哪些逻辑应抽为 shared renderer/validator
 
-改动文件：
+产出：
 
-1. `mate/trajectory/monitor.py`
-2. `mate/trajectory/collector.py`
+1. `VerlBackend` 候选结构图
+2. 与当前 `VLLMBackend` 的差异表
+3. 必做/可延后项清单
 
-任务：
+### WP2. Define The Token-Drift Research Program
 
-- [ ] Monitor 将 `ModelResponse.prompt_ids` 写入 `InteractionRecord`
-- [ ] Collector 将 `InteractionRecord.prompt_ids` 写入 `TurnData`
+需要回答：
 
-验收：
+1. 除 prompt re-render 外，还要研究哪些 drift source
+2. 如何构造可重复实验与对照组
+3. 如何让研究结果直接服务设计决策，而不是停留在现象收集
 
-- [ ] 端到端单测可在最终 `TurnData` 看到 `prompt_ids`
+建议对照组：
 
-## 4. Phase B — token-drift 验证
+1. 当前 side-channel `prompt_ids` 采集路径
+2. 未来 `VerlBackend` direct token 路径
+3. replay 场景
+4. 多 agent / tool call / branch 场景
+5. 不同 tokenizer/template/version 组合
 
-### B1. 增加一致性对照检查（MATE 侧）
+产出：
 
-目标：提供可审计证据，而非仅靠主观判断。
+1. drift taxonomy
+2. experiment matrix
+3. diagnostics artifact schema
+4. success/failure criteria
 
-任务：
+### WP3. Evaluate Output Contracts
 
-- [ ] 在测试/诊断脚本中加入抽样对照：`stored_prompt_ids` vs `re-tokenized_prompt_ids`
-- [ ] 记录 mismatch rate 与典型样本
+需要回答：
 
-产物建议：
+1. MATE 输出自有 dataclass 的优势是否仍成立
+2. `DataProto` 输出是否值得作为可选项进入 V0.3
+3. `rollout_routed_expert` 字段是否应在 V0.3 就进入合同
 
-1. `artifacts/*token_drift*.json`
-2. 回归日志中的 mismatch 摘要
+产出：
 
-### B2. 回归验证
+1. 契约选项对比表
+2. 依赖/耦合成本分析
+3. 推荐结论
 
-命令基线：
+### WP4. Reassess `global_turn_index`
 
-```bash
-cd /home/cxb/MATE-reboot
-python -m pytest tests/trajectory tests/scripts -q
-```
+需要回答：
 
-验收：
+1. 它在 direct token backend 设计里扮演什么角色
+2. 没有它时，是否仍能稳定完成 replay / ordering / branch consumer 需求
+3. 如果保留，应该是硬合同还是诊断字段
 
-- [ ] 全量通过
-- [ ] token-drift 对照产物生成成功
+产出：
 
-## 5. Phase C — global_turn_index 必要性评估
+1. Promote / Defer / Optional 三选一建议
+2. 依赖该字段的下游场景列表
 
-### C1. 评估实验
+## 4. Candidate Implementation Packages After Design Approval
 
-任务：
+只有在新设计批准后，才允许进入以下实现包拆分。
 
-- [ ] 构造并发 turn 采样场景，统计 timestamp 排序歧义是否可复现
-- [ ] 判断歧义是否实际影响 replay/branch 语义
+### Package A. `VerlBackend` Runtime Path
 
-### C2. 决策输出
+可能涉及：
 
-必须输出二选一结论：
+1. backend interface 扩展
+2. tokenizer/render 责任边界重构
+3. `AsyncLLMServerManager.generate(prompt_ids=...)` 接入
+4. direct token response capture
 
-1. **Promote**：下一迭代将 `global_turn_index` 升级为合同字段并实施
-2. **Defer**：当前保持 timestamp 方案，记录风险和触发条件
+### Package B. Alignment And Replay Validation
 
-交付位置：
+可能涉及：
 
-1. `docs/plans/2026-03-16-bgrpo-v03-design.md`（结论回填）
-2. `docs/project-context.md`（阶段状态更新）
+1. prompt replay validation
+2. assistant replay validation
+3. prefix delta / trailing template token 处理
+4. failure reason vocabulary
 
-## 6. 测试清单（本迭代）
+### Package C. Drift Diagnostics
 
-### 必测
+可能涉及：
 
-1. datatypes 新字段兼容性测试
-2. backend prompt_ids 生成测试（有/无 tokenizer）
-3. monitor/collector prompt_ids 透传测试
-4. token-drift 对照诊断测试
+1. drift artifact 输出
+2. mismatch 汇总
+3. regression test / smoke test / research script
 
-### 可选增强
+### Package D. Output Contract Extensions
 
-1. 真实环境 smoke 抽样验证 prompt_ids 完整率
+可能涉及：
 
-## 7. 风险与缓解
+1. `DataProto` exporter 或 native output path
+2. `rollout_routed_expert` metadata plumbing
+3. schema / compatibility tests
 
-1. **tokenizer 可用性不稳定**  
-   缓解：允许 `prompt_ids=None` fallback，不阻断主链路。
+### Package E. Turn Ordering Contract
 
-2. **本地重算仍可能与推理端微差异**  
-   缓解：明确对照统计，不把“理论一致”当成结论。
+可能涉及：
 
-3. **global_turn_index 评估结论拖延**  
-   缓解：将 C2 作为本迭代强制交付项，必须给 Promote/Defer。
+1. `global_turn_index` 字段设计
+2. backward compatibility
+3. ordering validator/tests
 
-## 8. 里程碑
+## 5. Constraints For The Next Agent Window
 
-### M1: prompt_ids 合同落地
+1. 先完成 design review 和 option comparison，不要直接写实现。
+2. 对 `DataProto` 和 `rollout_routed_expert` 只做客观评估，不要因为“以后可能有用”就默认纳入。
+3. 如果 `VerlBackend` 方案与当前 backend abstraction 有冲突，优先保留抽象边界的清晰性，而不是局部拼补。
+4. 如果 token-drift 研究表明风险主要来自非 prompt 环节，必须如实调整问题定义，不能强行把结论收束到 `prompt_ids`。
 
-- datatypes/backend/monitor/collector 完成
-- 对应单测通过
+## 6. Exit Criteria For Brainstorming
 
-### M2: token-drift 证据产出
+新窗口 brainstorming 只有在以下结果齐备时才算结束：
 
-- mismatch 统计与样例产物齐全
-- 回归通过
-
-### M3: global_turn_index 决策闭环
-
-- 输出 Promote 或 Defer
-- 文档状态更新完成
+1. 设计方向已在 A/B/C 候选方案中做出明确推荐
+2. token-drift 研究范围、证据形式和 success criteria 已冻结
+3. `DataProto` 与 `rollout_routed_expert` 的处理建议已明确
+4. `global_turn_index` 的优先级与地位已明确
+5. 新的实现计划值得编写

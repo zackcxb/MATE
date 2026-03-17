@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-17（V0.3 状态回退到 brainstorming 前置，token-drift first）
+> 最后更新：2026-03-17（V0.3 进入新一轮 brainstorming handoff：VerlBackend + token-drift research）
 
 ## 项目定位
 
@@ -8,8 +8,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 已收口；V0.3 已回退到 brainstorming 前置并重置范围。** 当前迭代聚焦 `MATE` 侧 token-drift 问题，不再在本仓推进 OrchRL 训练侧改动。
-
+**V0.2 已收口；V0.3 已再次重置为 brainstorming handoff。** 当前阶段不再把问题定义为“仅做 MATE 侧 `prompt_ids` side-channel 合同”，而是升级为更严格的架构与研究议题：恢复/实现 `VerlBackend`、系统研究 token drifting 风险、并评估输出契约向 `DataProto` 和 MoE rollout metadata 扩展的必要性。
 
 - 当前状态：
   - MATE-reboot 采集侧已具备 `tree_rollout`、`ReplayCache`、V0.2 验证脚本和可视化支持
@@ -19,7 +18,9 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
   - OrchRL trainer 已接受 “partial policy batches 是合法轨迹结果” 这一现实语义；当前策略是仅更新当步有 batch 的 policy，并记录 skipped policy metrics
   - OrchRL vendored `trajectory/` 与 MATE V0.2 tree 语义保持一致；当前唯一代码差异是 `trajectory/replay_cache.py` 为 vendoring 所需的相对导入改写，不构成语义分叉
   - 截至 2026-03-15，未发现要求 MATE 再修改 `tree_rollout`、`TreeEpisodeResult`、`ReplayCache` 或核心采集逻辑的 blocker 级新证据
-  - 当前操作优先级已经从“继续支撑 V0.2 联调”转为“完成阶段收口、冻结事实基线，并决定 V0.3 的设计入口”
+  - 当前已落地 `prompt_ids` 合同链路用于采集与观测，但它仍是 side-channel 记录，不是 direct token generation 路径
+  - 当前已确认 `/home/cxb/rl_framework/verl/recipe/swe_agent` 的方案在 prompt 处理上更严格：先生成 `prompt_ids`，再直接 `generate(prompt_ids=...)`，并做 replay/alignment 校验
+  - 当前 V0.3 的首要任务是开启新的 brainstorming，客观决定 `VerlBackend`、token-drift 研究、`DataProto` 输出选项和 `rollout_routed_expert` 字段的范围与优先级
 - V0 真实环境验证（2026-03-09，real 模式）：
   - 记录：`docs/retros/2026-03-09-trajectory-engine-real-validation.md`
   - 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:18080/retrieve`）
@@ -67,14 +68,25 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | 接口演进 | 扩展模式——新增 `tree_rollout`，保留 `parallel_rollout` 不变 | 同上 |
 | 训练侧消费 | OrchRL adapter 层（`mate_rollout_adapter` + `mate_dataproto_adapter`），PYTHONPATH 导入 | OrchRL `orchrl/trainer/` |
 
+### V0.3 当前开放问题（待 brainstorming）
+
+| 议题 | 当前状态 |
+|------|------|
+| `VerlBackend` | 需要重新评估并大概率恢复为当前阶段核心候选方案 |
+| token drifting | 已确认需要专项研究，不仅限于 prompt re-render 风险 |
+| `DataProto` 输出 | 作为候选输出契约，需要客观评估收益与耦合成本 |
+| `rollout_routed_expert` | 作为 MoE 一致性候选字段，需要评估来源、粒度与必要性 |
+| `global_turn_index` | 仍待评估，但优先级下调为完整设计中的一个子问题 |
+
 ## 依赖关系
 
 | 依赖 | 路径 | 用途 |
 |------|------|------|
 | OrchRL 主仓（含训练代码） | `/home/cxb/OrchRL/` | 训练侧适配层（`orchrl/trainer/mate_*`）+ trajectory 副本 |
 | OrchRL Search MAS | `/home/cxb/OrchRL/examples/mas_app/search/` | V0/V0.2 端到端验证的 MAS 应用 |
-| Verl | `third_party/verl`（git submodule） | RL 框架基线 |
-| 团队架构 PPT | `/home/cxb/multi-agent/docs/multi-agent-rl.pdf` | MARL GRPO 分组适配算法（V0.2 核心算法对标） |
+| Verl 参考实现 | `/home/cxb/rl_framework/verl/` | `swe_agent` 的 direct token generation、proxy、alignment 参考 |
+| Verl 子模块 | `third_party/verl`（git submodule） | RL 框架基线 |
+| 团队架构 PPT | `/home/cxb/multi-agent/docs/multi-agent-rl.pdf` | MARL/BGRPO 相关算法参考 |
 
 ### V0.2 技术参考
 
@@ -92,7 +104,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | 文档 | 类型 | 说明 |
 |------|------|------|
 | `docs/plans/2026-03-02-marl-grpo-v0-directions.md` | 方向设计 | V0 方向评估 |
-| `docs/plans/2026-03-04-trajectory-engine-v0-design.md` | 架构设计 | V0 详细设计（已冻结） |
+| `docs/plans/2026-03-04-trajectory-engine-v0-design.md` | 架构设计 | V0 详细设计（已冻结，含早期 `VerlBackend` 设想） |
 | `docs/plans/2026-03-04-trajectory-engine-v0-impl-plan.md` | 实施计划 | V0 实施细节 |
 | `docs/plans/2026-03-05-training-integration-spec.md` | 对接规格（历史） | V0 阶段直连 `VerlBackend` 设想；当前 OrchRL 实际路径是 adapter + `VLLMBackend` |
 | `docs/retros/2026-03-09-trajectory-engine-real-validation.md` | 验证记录 | 真实环境验证证据、异常样本与根因分析 |
@@ -112,7 +124,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/prompts/2026-03-09-v02-implementation.md` | 会话 prompt | V0.2 实施会话启动模板 |
 | `docs/prompts/2026-03-09-v02-master-agent.md` | 会话 prompt | V0.2 Master Agent 启动模板（统筹+验证） |
 | `docs/prompts/2026-03-14-mate-tree-smoke-handoff.md` | 会话 prompt | 新服务器 MATE Agent 交接 prompt（真实 tree smoke 支持） |
-| `docs/prompts/2026-03-15-v03-brainstorming-handoff.md` | 会话 prompt | V0.3 brainstorming 启动模板（阶段切换用） |
+| `docs/prompts/2026-03-15-v03-brainstorming-handoff.md` | 会话 prompt | V0.3 brainstorming 启动模板（VerlBackend + token-drift research） |
 | `scripts/USAGE.md` | 用法文档 | 三个验证脚本的参数、输出格式、工作流 |
 
 ## 待办
@@ -146,12 +158,14 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Task 9: 轨迹可视化支持 V0.2 schema（`scripts/visualize_trajectories.py` 更新）
 - [x] 在新服务器完成 OrchRL tree 模式真实 smoke，并确认当前没有新的 MATE blocker 级修补需求
 
-### 下一阶段准备（V0.3 reset 后）
+### V0.3（brainstorming handoff）
 
-- [ ] 完成 MATE 侧 `prompt_ids` 合同落地（datatypes/backend/monitor/collector）
-- [ ] 产出 token-drift 对照证据（stored prompt_ids vs re-tokenized ids）
-- [ ] 对 `global_turn_index` 必要性给出 Promote/Defer 二选一结论
-- [ ] 明确 OrchRL 侧工作由同事承接，本仓只维护 MATE 契约与证据
+- [ ] 在新窗口完成 `VerlBackend` 方案 brainstorming，并明确与 `VLLMBackend` 的职责边界
+- [ ] 制定 token-drift 研究设计：taxonomy、实验矩阵、artifact schema、success criteria
+- [ ] 客观评估 `DataProto` 输出选项的价值与耦合代价
+- [ ] 客观评估 `rollout_routed_expert` 字段的必要性、来源和粒度
+- [ ] 重新评估 `global_turn_index` 的角色与优先级
+- [ ] 在设计批准后，再编写新的实现计划
 
 #### V0.2 真实环境验证（2026-03-11，real 模式）
 
