@@ -9,6 +9,7 @@ def _record(
     response_text: str = "resp",
     token_ids: list[int] | None = None,
     logprobs: list[float] | None = None,
+    prompt_ids: list[int] | None = None,
 ) -> InteractionRecord:
     return InteractionRecord(
         agent_role=agent_role,
@@ -21,6 +22,7 @@ def _record(
         logprobs=logprobs,
         finish_reason="stop",
         episode_id="buffer-ep",
+        prompt_ids=prompt_ids,
         metadata={"source": "test"},
     )
 
@@ -83,6 +85,7 @@ def test_build_preserves_record_fields():
     assert turn.logprobs == [-0.11, -0.22, -0.33]
     assert turn.finish_reason == "stop"
     assert turn.timestamp == record.timestamp
+    assert turn.prompt_ids is None
     assert turn.metadata == {
         "source": "test",
         "episode_id": "ep-fidelity",
@@ -91,3 +94,16 @@ def test_build_preserves_record_fields():
         "timestamp": record.timestamp,
     }
     assert record.metadata == {"source": "test"}
+
+
+def test_build_preserves_prompt_ids():
+    record = _record(
+        agent_role="searcher",
+        turn_index=1,
+        token_ids=[10],
+        logprobs=[-0.1],
+        prompt_ids=[1001, 1002],
+    )
+    trajectory = TrajectoryCollector().build(buffer=[record], episode_id="ep-prompt-ids")
+    turn = trajectory.agent_trajectories["searcher"][0]
+    assert turn.prompt_ids == [1001, 1002]

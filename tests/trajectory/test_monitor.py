@@ -372,3 +372,32 @@ async def test_clear_buffer_drops_inflight_response_after_clear():
         assert monitor.get_buffer() == []
     finally:
         await monitor.stop()
+
+
+async def test_collects_prompt_ids_to_buffer():
+    class PromptIdBackend(InferenceBackend):
+        async def generate(self, request: ModelRequest) -> ModelResponse:
+            return ModelResponse(
+                content="ok",
+                token_ids=[1, 2],
+                logprobs=[-0.1, -0.2],
+                finish_reason="stop",
+                prompt_ids=[101, 102, 103],
+            )
+
+    monitor = ModelMonitor(
+        backend=PromptIdBackend(),
+        model_mapping={"verifier": ModelMappingEntry(actual_model="m1")},
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
+            )
+        assert response.status_code == 200
+        record = monitor.get_buffer()[0]
+        assert record.prompt_ids == [101, 102, 103]
+    finally:
+        await monitor.stop()

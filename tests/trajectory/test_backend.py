@@ -297,3 +297,49 @@ async def test_vllm_backend_logprobs_keeps_only_finite_numbers(monkeypatch):
     resp = await backend.generate(req)
 
     assert resp.logprobs == [-0.5, 2.0]
+
+
+async def test_vllm_backend_generates_prompt_ids_with_tokenizer(monkeypatch):
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt, tokenize):
+            assert add_generation_prompt is True
+            assert tokenize is True
+            return [901, 902, 903]
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {"role": "assistant", "content": "ok"},
+                            "finish_reason": "stop",
+                            "token_ids": [1],
+                            "logprobs": {"content": [{"token": "ok", "logprob": -0.1}]},
+                        }
+                    ]
+                },
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr("mate.trajectory.backend.httpx.AsyncClient", FakeAsyncClient)
+
+    backend = VLLMBackend(backend_url="http://fake-vllm", tokenizer=FakeTokenizer())
+    req = ModelRequest(
+        request_id="r1",
+        agent_role="verifier",
+        messages=[{"role": "user", "content": "x"}],
+        generation_params={},
+    )
+    resp = await backend.generate(req)
+    assert resp.prompt_ids == [901, 902, 903]

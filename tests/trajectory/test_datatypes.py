@@ -26,6 +26,18 @@ def test_model_response_with_none_tokens():
     resp = ModelResponse(content="hi", token_ids=None, logprobs=None, finish_reason="stop")
     assert resp.token_ids is None
     assert resp.finish_reason == "stop"
+    assert resp.prompt_ids is None
+
+
+def test_model_response_with_prompt_ids():
+    resp = ModelResponse(
+        content="hi",
+        token_ids=[1, 2],
+        logprobs=[-0.1, -0.2],
+        finish_reason="stop",
+        prompt_ids=[101, 102, 103],
+    )
+    assert resp.prompt_ids == [101, 102, 103]
 
 
 def test_interaction_record_fields():
@@ -40,10 +52,12 @@ def test_interaction_record_fields():
         logprobs=[-0.1, -0.2, -0.3],
         finish_reason="stop",
         episode_id="ep1",
+        prompt_ids=[101, 102],
         metadata={},
     )
     assert rec.agent_role == "searcher"
     assert len(rec.token_ids) == 3
+    assert rec.prompt_ids == [101, 102]
 
 
 def test_episode_trajectory_agent_grouping():
@@ -56,6 +70,7 @@ def test_episode_trajectory_agent_grouping():
         logprobs=None,
         finish_reason="stop",
         timestamp=1.0,
+        prompt_ids=[11, 12],
         metadata={},
     )
     t2 = TurnData(
@@ -67,6 +82,7 @@ def test_episode_trajectory_agent_grouping():
         logprobs=None,
         finish_reason="stop",
         timestamp=2.0,
+        prompt_ids=[21, 22],
         metadata={},
     )
     traj = EpisodeTrajectory(
@@ -75,6 +91,8 @@ def test_episode_trajectory_agent_grouping():
         metadata={},
     )
     assert set(traj.agent_trajectories.keys()) == {"verifier", "searcher"}
+    assert traj.agent_trajectories["verifier"][0].prompt_ids == [11, 12]
+    assert traj.agent_trajectories["searcher"][0].prompt_ids == [21, 22]
 
 
 def test_episode_result_with_per_turn_rewards():

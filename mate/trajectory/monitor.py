@@ -137,6 +137,7 @@ class ModelMonitor:
             logprobs=response.logprobs,
             finish_reason=response.finish_reason,
             episode_id=self._episode_id,
+            prompt_ids=getattr(response, "prompt_ids", None),
             metadata={"replayed": True} if replayed else {},
         )
         with self._state_lock:

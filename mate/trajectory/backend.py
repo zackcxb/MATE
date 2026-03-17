@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -89,6 +90,7 @@ class VLLMBackend(InferenceBackend):
         finish_reason = choice.get("finish_reason") or "stop"
 
         token_ids: list[int] | None = None
+        prompt_ids: list[int] | None = None
         logprobs: list[float] | None = None
         logprobs_data = choice.get("logprobs")
         if isinstance(logprobs_data, dict) and isinstance(logprobs_data.get("content"), list):
@@ -111,11 +113,14 @@ class VLLMBackend(InferenceBackend):
             if token_ids is None and content:
                 token_ids = self._tokenizer.encode(content, add_special_tokens=False)
 
+        prompt_ids = self._extract_prompt_ids(request.messages)
+
         return ModelResponse(
             content=content,
             token_ids=token_ids,
             logprobs=logprobs,
             finish_reason=finish_reason,
+            prompt_ids=prompt_ids,
         )
 
     def _extract_token_ids_from_logprobs(
@@ -139,4 +144,40 @@ class VLLMBackend(InferenceBackend):
                 ids.append(tid)
             else:
                 ids.append(self._tokenizer.unk_token_id or 0)
+        return ids if ids else None
+
+    def _extract_prompt_ids(self, messages: list[dict[str, Any]]) -> list[int] | None:
+        if self._tokenizer is None:
+            return None
+        try:
+            prompt_ids = self._tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+            )
+        except TypeError:
+            # Older tokenizers may not support the tokenize kwarg.
+            prompt_ids = self._tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+            )
+        except Exception:
+            return None
+        return self._normalize_ids(prompt_ids)
+
+    @staticmethod
+    def _normalize_ids(token_ids: Any) -> list[int] | None:
+        if token_ids is None:
+            return None
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+        if not isinstance(token_ids, Sequence) or isinstance(token_ids, (str, bytes)):
+            return None
+        ids: list[int] = []
+        for token_id in token_ids:
+            if isinstance(token_id, bool):
+                return None
+            if not isinstance(token_id, int):
+                return None
+            ids.append(int(token_id))
         return ids if ids else None

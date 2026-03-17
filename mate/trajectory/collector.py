@@ -31,5 +31,6 @@ class TrajectoryCollector:
             logprobs=record.logprobs,
             finish_reason=record.finish_reason,
             timestamp=record.timestamp,
+            prompt_ids=record.prompt_ids,
             metadata=metadata,
         )

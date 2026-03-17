@@ -24,6 +24,7 @@ class ModelResponse:
     token_ids: list[int] | None
     logprobs: list[float] | None
     finish_reason: str
+    prompt_ids: list[int] | None = None
 
 
 @dataclass
@@ -38,6 +39,7 @@ class InteractionRecord:
     logprobs: list[float] | None
     finish_reason: str
     episode_id: str
+    prompt_ids: list[int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -51,6 +53,7 @@ class TurnData:
     logprobs: list[float] | None
     finish_reason: str
     timestamp: float
+    prompt_ids: list[int] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

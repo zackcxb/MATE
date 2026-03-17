@@ -40,6 +40,7 @@ class ReplayCache:
                 token_ids=record.token_ids,
                 logprobs=record.logprobs,
                 finish_reason=record.finish_reason,
+                prompt_ids=record.prompt_ids,
             )
             message_hashes[key] = _messages_hash(record.messages)
 
