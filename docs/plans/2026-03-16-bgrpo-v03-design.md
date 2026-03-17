@@ -1,230 +1,158 @@
-# V0.3 Design: BGRPO 实现与 Token-drift 防护
+# V0.3 Design (Rev B): 基于 PR #10 的 BGRPO 方案重整
 
-> Status: **Design approved, pending implementation plan**
-> Date: 2026-03-16
-> Scope: MATE 采集侧契约增强 + OrchRL 训练侧 BGRPO 分组修复
+> Status: **Reviewed after PR #10/#9, pending implementation**  
+> Date: 2026-03-17  
+> Scope: OrchRL BGRPO 分组正确性 + MATE 数据契约补齐（token-drift / global_turn_index）
 
-## 1. 问题定义
+## 1. 结论摘要
 
-V0.2 完成了 tree_rollout / ReplayCache / TreeEpisodeResult 的采集能力。OrchRL 已能消费 tree 轨迹。但两个问题阻碍 Branching-GRPO (BGRPO) 算法的正确实现：
+本次以 OrchRL 外部 PR 为基线完成复审后，V0.3 的核心结论如下：
 
-1. **GRPO 分组 UID 错误**：OrchRL 当前 uid_factory 中，pilot turns 和同分支点的 branch turns 使用不同 uid 格式，永远无法落入同一 GRPO group，无法计算 comparative advantage
-2. **Token-drift 风险**：MATE 不存储 prompt_ids，OrchRL 消费时用训练侧 tokenizer 重新 tokenize messages，与 vLLM 推理侧可能不一致
+1. **PR #10 的 `group_id` 分组思路是正确方向**，可接受为主线实现。
+2. **PR #10 已实现“做法 C”（每个 branch 只保留分支点 turn）**，但仍依赖 timestamp 推断全局 turn 顺序，稳定性不足。
+3. **PR #10 未覆盖 token-drift 防护（`prompt_ids`）与采集侧 `global_turn_index` 契约增强**，这两项仍是 V0.3 必做。
+4. **PR #9 对 MATE/OrchRL 适配层的核心影响主要是导入路径迁移**（`trajectory` -> `orchrl.agent_trajectory_engine`），但其 `orchrl/__init__.py` 存在语法错误，需先修复后才能安全合入。
 
-附带改进：
-3. **缺少 global_turn_index**：当前依赖 timestamp 推断 episode 内 turn 全局顺序，MAS 并发场景下不可靠
+## 2. PR 审查结果（代码级）
 
-## 2. 设计决策
+### 2.1 PR #10（核心）
 
-### 2.1 V0.3 范围
+#### 2.1.1 UID / group_id 分组
 
-| 方向 | 决策 | 理由 |
-|------|------|------|
-| BGRPO 实现 | **IN** | 下一阶段核心目标 |
-| Token-drift 防护 | **IN** | BGRPO 正确性的前置条件 |
-| Global turn order | **IN** | 采集侧提供比训练侧推断更可靠 |
-| 采集侧保持不动 | OUT | 上述问题必须在采集侧解决 |
-| Vendored 同步工具化 | OUT | 手工同步仍可控 |
-| 训练效率接口（prefix packing 等） | OUT | 非 BGRPO blocker |
+实现位置：
+- `orchrl/trainer/mate_dataproto_adapter.py:266-283`（`group_id` 与 `uid` 生成）
+- `orchrl/trainer/multi_agents_ppo_trainer.py:498-516`（`uid -> group_id` 临时替换并恢复）
+- `orchrl/trainer/multi_agents_ppo_trainer.py:983-1007`（group key 解析）
 
-### 2.2 实现路径
+结论：
+- `group_id = "{prompt_group_id}:turn{global_turn_index}:agent{agent_idx}"` 能让 pilot 与同分支点 branch 落入同组。
+- `uid = "{group_id}:{source}:{episode_id}"` 保持样本唯一，语义清晰。
+- `_update_parameters` 的 “替换 -> `compute_advantage` -> 恢复” 使用 `try/finally`，异常路径可恢复，模式安全。
 
-**MATE-first**：先在 MATE 侧补足数据契约（prompt_ids + global_turn_index），再在 OrchRL 侧修 UID 分组并接入 BGRPO。
+> 设计决策：V0.3 采用“`uid`（唯一标识）与 `group_id`（GRPO 分组键）分离”的模式，替代此前“统一 uid 格式兼做分组”的方案。
 
-理由：
-- MATE 改动是纯数据结构扩展，不改变 tree_rollout 编排逻辑，向后兼容
-- prompt_ids 和 global_turn_index 不仅服务 BGRPO，也解决已识别的 token-drift 和 timestamp 脆弱性
-- OrchRL 侧 UID 修复依赖对 tree 结构的正确理解，MATE 提供可靠元数据比让 OrchRL 自行推断更稳健
+#### 2.1.2 分支点 turn 选择（做法 C）
 
-### 2.3 延续 turn 处理
+实现位置：
+- `orchrl/trainer/mate_dataproto_adapter.py:96-155`（`tree_episodes_to_decision_point_batches`）
+- `orchrl/trainer/mate_dataproto_adapter.py:311-323`（`_select_branch_decision_turn`）
 
-每个 branch 的 turn 分三段：
+结论：
+- 每个 branch 只选一个 decision-point turn；continuation turns 不进入 batch。
+- 与 V0.3 既定“做法 C”一致（分支点参与 loss，延续轨迹只用于回报评估）。
 
-| 段 | 条件 | 用途 | 进入训练 batch |
-|---|------|------|---------------|
-| Replayed prefix | `global_turn_index < branch_turn` | 重放前缀 | 否 |
-| **分支点 action** | `global_turn_index == branch_turn` | **计算 loss** | **是** |
-| Continuation | `global_turn_index > branch_turn` | 推进 episode 获取 reward | 否 |
+注意：
+- turn 全局顺序仍由 `_turn_global_positions` 基于 timestamp 推断（`mate_dataproto_adapter.py:290-299`），非采集侧显式 `global_turn_index`。
 
-采用**做法 C**：每个 branch 只贡献 1 条训练记录（分支点 turn），continuation turns 不进入 batch。
+#### 2.1.3 Reward 处理
 
-理由：延续 turn 的上下文已与 pilot 分叉，没有上下文匹配的比较对象，计算 advantage 在理论上不成立。
+实现位置：
+- `orchrl/trainer/mate_dataproto_adapter.py:265`（`_resolve_episode_final_reward(...)`）
+- `orchrl/trainer/mate_dataproto_adapter.py:331-334`
 
-## 3. MATE 侧数据契约变更
+结论：
+- Tree/BGRPO 路径统一使用 `episode.final_reward`，不再走 per-role + `credit_assignment`。
+- 对 BGRPO（基于分叉后完整 rollout outcome）是合理默认；更贴近“同决策点多候选动作比较最终结果”的算法语义。
 
-### 3.1 TurnData 扩展
+边界：
+- 若未来奖励体系显式需要 role-specific credit，需增加可配置策略（默认 final_reward，选配 per-role）。
 
-```python
-@dataclass
-class TurnData:
-    agent_role: str
-    turn_index: int                    # 保持：agent 内局部序号
-    global_turn_index: int             # 新增：episode 内全局执行顺序
-    messages: list[dict[str, Any]]     # 保持
-    prompt_ids: list[int] | None       # 新增：推理侧实际使用的 prompt token IDs
-    response_text: str
-    token_ids: list[int] | None
-    logprobs: list[float] | None
-    finish_reason: str
-    timestamp: float
-    metadata: dict[str, Any] = field(default_factory=dict)
+#### 2.1.4 已识别风险与缺口
+
+1. **多 sample 混组风险（需修）**  
+   `group_id` 未包含 `sample_idx`（`mate_dataproto_adapter.py:259,266`），当 `n_samples_per_prompt > 1` 时可能把不同 pilot tree 混到同一组。  
+   当前 PR 配置把 `train_sample_num` 调为 1（`orchrl/config/search/search_mas_nosearch_external.yaml`），但这是配置规避，不是代码层防护。
+
+2. **分支点缺失时静默降级（需加校验）**  
+   `_select_branch_decision_turn` 找不到匹配时返回 `None` 或 fallback 首个 turn（`mate_dataproto_adapter.py:317-323`），当前为静默行为，可能导致 group size 异常而不易察觉。
+
+3. **仍有 timestamp 重建依赖（需由 MATE 合同消除）**  
+   `_turn_global_positions` 继续依赖 timestamp（`mate_dataproto_adapter.py:290-299`），尚未接入采集侧显式 `global_turn_index`。
+
+4. **token-drift 仍未处理（V0.3 blocker）**  
+   prompt 仍由训练侧 `messages -> tokenize` 重建（`mate_dataproto_adapter.py:263,337-346`），未优先消费 rollout 侧 `prompt_ids`。
+
+### 2.2 PR #9（依赖迁移）
+
+审查重点文件：
+- `orchrl/trainer/mate_dataproto_adapter.py:8`
+- `orchrl/trainer/mate_rollout_adapter.py:11-18`
+- `orchrl/trainer/train.py:53`
+
+结论：
+- 适配层主变更是导入路径迁移（`trajectory` -> `orchrl.agent_trajectory_engine`），只要该包随仓发布，MATE/OrchRL 集成层逻辑本身不受影响。
+- 发现一个合入阻断问题：`orchrl/__init__.py:55` 有 f-string 引号冲突，存在 `SyntaxError` 风险，需先修复再合入。
+
+## 3. V0.3 设计重整（相对旧版）
+
+### 3.1 保留并采纳
+
+1. Tree 模式只训练分支点 action（做法 C）。
+2. 在 advantage 计算时按分组键而非样本唯一键分组。
+3. Tree/BGRPO 默认使用 episode-level outcome（`final_reward`）。
+
+### 3.2 方案替换
+
+1. **旧方案（弃用）**：通过统一 uid 格式同时承担“唯一标识+分组语义”。
+2. **新方案（采用）**：
+   - `uid`：仅用于样本唯一标识；
+   - `group_id`：仅用于 GRPO 分组；
+   - `_update_parameters` 中临时将 `uid` 替换为 `group_id` 供 `compute_advantage` 使用。
+
+### 3.3 必须补齐（PR #10 未覆盖）
+
+1. MATE 合同新增 `global_turn_index`，OrchRL 优先消费该字段（无则 fallback timestamp）。
+2. MATE 合同新增 `prompt_ids`，OrchRL 优先消费（无则 fallback tokenize）。
+3. Tree group key 需纳入 sample 维度，防止跨 sample 混组。
+4. 增加 decision-point 分组完整性校验（最少样本数、期望 K、异常日志）。
+
+## 4. 接受 PR #10 后的目标架构
+
+### 4.1 分组键定义（最终）
+
+```text
+group_id = {prompt_group_id}:sample{sample_idx}:turn{global_turn_index}:agent{agent_idx}
+uid      = {group_id}:{source}:{episode_id}
 ```
 
-| 新字段 | 类型 | 分配者 | 向后兼容 |
-|--------|------|--------|---------|
-| `global_turn_index` | `int` | Monitor（按请求到达顺序递增） | 默认值兼容旧数据 |
-| `prompt_ids` | `list[int] \| None` | VLLMBackend（有 tokenizer 时） | None 允许 fallback |
+说明：
+- `sample_idx` 入 group key，避免多 sample 混组。
+- `uid` 仍保留 `source/episode_id` 以保证全局唯一并支持审计。
 
-### 3.2 InteractionRecord 同步扩展
+### 4.2 turn 顺序来源（最终）
 
-与 TurnData 对应，新增 `global_turn_index` 和 `prompt_ids` 字段。
+1. 首选 `turn.global_turn_index`（来自 MATE 采集侧，稳定）。
+2. 缺失时 fallback `_turn_global_positions`（仅兼容旧数据）。
 
-### 3.3 ModelResponse 扩展
+### 4.3 prompt token 来源（最终）
 
-新增 `prompt_ids: list[int] | None`，由 VLLMBackend.generate() 填充。
+1. 首选 `turn.prompt_ids`（rollout 实际使用 token）。
+2. 缺失时 fallback `_tokenize_messages(messages)`。
 
-## 4. Token-drift 防护链路
+## 5. 验证标准（更新）
 
-数据流逐层传递 prompt_ids：
+### Level 1（单测）
 
-```
-VLLMBackend.generate()
-  ├─ tokenizer 可用 → apply_chat_template() → prompt_ids
-  └─ tokenizer 不可用 → prompt_ids = None
-    ↓
-Monitor._handle_...()
-  → InteractionRecord(prompt_ids=response.prompt_ids)
-    ↓
-Collector._to_turn_data()
-  → TurnData(prompt_ids=record.prompt_ids)
-    ↓
-OrchRL mate_dataproto_adapter
-  → turn.prompt_ids is not None ? 直接使用 : fallback 重新 tokenize
-```
+1. Pilot + branch 同 decision-point 共享 `group_id`，`uid` 各自唯一。
+2. `n_samples_per_prompt=2` 时不同 sample 不会被分到同组。
+3. 每个 branch 仅产出一个 decision-point 样本，continuation 不入 batch。
+4. `compute_advantage` 期间替换为 `group_id`，退出后 `uid` 恢复（含异常路径）。
 
-VLLMBackend 仍把 messages 原样发给 vLLM（推理路径不变）。本地 tokenize 仅为存储 prompt_ids。vLLM 底层使用相同 HuggingFace tokenizer，同一 model_path 下产出一致。
+### Level 2（Tree smoke）
 
-## 5. OrchRL 侧 GRPO 分组修复
+1. group size 统计与 `k_branches` 对齐（允许失败分支但需有告警）。
+2. advantage 非全零（排除大量 singleton 退化）。
+3. 无 NaN/Inf。
 
-### 5.1 当前问题
+### Level 3（短跑）
 
-```python
-# pilot: uid = "pg:0"
-uid_factory=lambda *, prompt_group_id, agent_idx, **_: f"{prompt_group_id}:{agent_idx}"
+1. 50-100 step 内 reward/advantage 分布无明显异常。
+2. 抽样验证 `prompt_ids` 直通消费链路。
+3. 抽样验证 `global_turn_index` 与 fallback 路径的一致性。
 
-# branch: uid = "pg:0:b2"
-uid_factory=lambda ...: _tree_uid(prompt_group_id, agent_idx, branch_turn, ...)
-```
+## 6. 向后兼容策略
 
-pilot turn (uid=`pg:0`) 和同分支点 branch turn (uid=`pg:0:b2`) 永远不在同一 GRPO group。
-
-### 5.2 修复后 UID 方案
-
-```python
-# Pilot turns
-def pilot_uid(*, prompt_group_id, agent_idx, global_turn_index, **_):
-    return f"{prompt_group_id}:{agent_idx}:bp{global_turn_index}"
-
-# Branch turns
-def branch_uid(*, prompt_group_id, agent_idx, branch_turn, global_turn_index, **_):
-    if global_turn_index == branch_turn:
-        # 分支点 turn → 与 pilot 同组
-        return f"{prompt_group_id}:{agent_idx}:bp{branch_turn}"
-    else:
-        # 延续 turn → 唯一 uid（做法 C: 不进入 batch）
-        return f"{prompt_group_id}:{agent_idx}:bp{branch_turn}:c{global_turn_index}"
-```
-
-### 5.3 skip_turn_predicate 修改
-
-```python
-# 当前：只跳过 replayed prefix
-skip_turn_predicate=lambda turn, *, global_turn_index, **_: global_turn_index < branch.branch_turn
-
-# 修复后：只保留分支点 turn（做法 C）
-skip_turn_predicate=lambda turn, *, global_turn_index, **_: global_turn_index != branch.branch_turn
-```
-
-### 5.4 GRPO 分组效果
-
-SearchMAS, K=3, pilot 有 4 个 turns：
-
-| Group uid | 成员 | Size |
-|-----------|------|------|
-| `pg:0:bp0` | pilot_turn_0, branch_0a_turn_0, branch_0b_turn_0 | 3 |
-| `pg:1:bp1` | pilot_turn_1, branch_1a_turn_1, branch_1b_turn_1 | 3 |
-| `pg:0:bp2` | pilot_turn_2, branch_2a_turn_2, branch_2b_turn_2 | 3 |
-| `pg:2:bp3` | pilot_turn_3, branch_3a_turn_3, branch_3b_turn_3 | 3 |
-
-每个 GRPO group 恰好 K 个样本，干净对称。Continuation turns 不进入 batch。
-
-## 6. 实现工作流
-
-### 6.1 Phase 1: MATE V0.3
-
-| 顺序 | 文件 | 改动 | 验证 |
-|------|------|------|------|
-| 1 | `datatypes.py` | ModelResponse / InteractionRecord / TurnData 加 prompt_ids, global_turn_index | 现有测试回归 |
-| 2 | `monitor.py` | 新增 `_global_turn_counter`，填入 record | 新增 test: 递增性、跨 agent 唯一 |
-| 3 | `backend.py` | VLLMBackend 有 tokenizer 时生成 prompt_ids | 新增 test: 有/无 tokenizer 两条路径 |
-| 4 | `collector.py` | `_to_turn_data` 透传新字段 | 现有测试扩展 |
-| 5 | `tree.py` | `_sorted_buffer` 改用 global_turn_index 排序 | 现有 tree 测试回归 |
-| 6 | `replay_cache.py` | `from_buffer` 排序键从 timestamp 改为 global_turn_index，与 tree.py 保持一致 | 现有 replay_cache 测试回归 |
-
-**不改**：tree_rollout 编排逻辑、parallel_rollout、AgentPipe.run()。
-
-完成标准：`python -m pytest tests/trajectory tests/scripts -q` 全量通过。
-
-### 6.2 Phase 2: OrchRL BGRPO
-
-| 顺序 | 文件 | 改动 |
-|------|------|------|
-| 1 | vendored `trajectory/` | 同步 V0.3 新字段（仅改相对导入） |
-| 2 | `mate_dataproto_adapter.py` | UID 方案修复 + skip_turn_predicate 做法 C + prompt_ids 优先消费 |
-| 3 | `mate_rollout_adapter.py`（可能） | 确保 VLLMBackend 有 tokenizer |
-
-完成标准：现有 OrchRL tree 测试回归 + 新增 GRPO 分组正确性测试 + Level 3a 8 卡短跑诊断通过。
-
-## 7. 验证策略
-
-### Level 1 — 单元验证（无 GPU）
-
-构造 mock TreeEpisodeResult（K=3, 4 个 pilot turns），验证：
-- 每个 GRPO group 恰好 K 个样本
-- Continuation turns 不在 batch 中
-- Pilot uid 和 branch uid 在分支点处相同
-
-### Level 2 — SearchMAS tree smoke（需 vLLM + 检索服务）
-
-用现有 SearchMAS tree smoke 跑 2 个 training step，验证：
-- GRPO advantage 非全零（group 内有方差）
-- Loss 数值合理（非 NaN/Inf）
-- prompt_ids 在 TurnData 中非 None（tokenizer 可用时）
-
-### Level 3a — 8 卡短跑诊断（V0.3 完成标准）
-
-SearchMAS, BGRPO, 50-100 training steps，8 卡环境。诊断指标：
-
-1. **Reward 趋势**：episode reward 均值是否有上升趋势（或至少不是完全平坦/发散）
-2. **Advantage 分布**：GRPO group 内的 advantage 是否有方差（全零说明分组有问题）
-3. **分支点 loss 贡献**：只有分支点 turn 贡献了梯度（做法 C 正确性）
-4. **prompt_ids 一致性**：抽样对比 MATE 存储的 prompt_ids 与 OrchRL fallback tokenize 的结果
-
-通过标准：上述 4 项均无异常。不要求 reward 必须上升（50-100 steps 可能不够），但要求**无明显 bug 信号**（reward 发散、advantage 全零、loss NaN）。
-
-### Level 3b — 完整对比实验（后续，非 V0.3 scope）
-
-Tree mode (BGRPO) vs Parallel mode (标准 GRPO) 在相同 LLM 调用预算下的 reward 对比，多 seed。
-
-## 8. 向后兼容
-
-所有新字段都是 Optional 或有默认值：
-- `prompt_ids: list[int] | None = None`
-- `global_turn_index: int` 需要默认值以兼容旧数据
-
-OrchRL 侧对两个字段均有 fallback：
-- prompt_ids 为 None 时回退到重新 tokenize
-- global_turn_index 缺失时回退到 timestamp 排序
-
-旧版 MATE 产出的数据仍可被消费。
-
+1. 对旧轨迹（无 `prompt_ids` / `global_turn_index`）保持可训练：
+   - `global_turn_index` fallback timestamp；
+   - `prompt_ids` fallback tokenize。
+2. 新增校验不应阻断旧数据训练，但需给出显式告警与统计。
