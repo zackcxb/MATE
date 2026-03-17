@@ -483,12 +483,13 @@ git add mate/trajectory/collector.py tests/trajectory/test_collector.py
 git commit -m "feat(collector): propagate global_turn_index and prompt_ids to TurnData"
 ```
 
-### Task 5: Update tree.py — use global_turn_index for sorting
+### Task 5: Update tree.py and replay_cache.py — use global_turn_index for sorting
 
 **Files:**
 - Modify: `mate/trajectory/tree.py` (`_sorted_buffer` function)
+- Modify: `mate/trajectory/replay_cache.py` (`from_buffer` sort key)
 
-Note: `replay_cache.py` is explicitly **not changed** per design doc boundary ("不改 ReplayCache"). ReplayCache continues to use timestamp sorting, which is correct — it only needs to replay turns in the same agent-local order, not global order.
+Both must use the same sort key. `_sorted_buffer` produces the pilot buffer and `enumerate`s it to get `global_position`. `ReplayCache.from_buffer` re-sorts the same buffer and slices at `branch_at_global_position`. If the two sort keys differ (e.g. `global_turn_index` vs `timestamp`), the slice position is wrong in concurrent scenarios where response completion order differs from request arrival order.
 
 - [ ] **Step 1: Modify `_sorted_buffer` to use `global_turn_index`**
 
@@ -499,13 +500,21 @@ def _sorted_buffer(buffer: list[InteractionRecord]) -> list[InteractionRecord]:
     return sorted(buffer, key=lambda record: record.global_turn_index)
 ```
 
-- [ ] **Step 2: Run all tree tests for regression**
+- [ ] **Step 2: Modify `ReplayCache.from_buffer` to use `global_turn_index`**
 
-Run: `cd /home/cxb/MATE-reboot && python -m pytest tests/trajectory/test_tree.py tests/trajectory/test_tree_integration.py -v 2>&1 | tail -30`
+In `mate/trajectory/replay_cache.py`, change the sort in `from_buffer`:
+
+```python
+        sorted_buffer = sorted(buffer, key=lambda record: record.global_turn_index)
+```
+
+- [ ] **Step 3: Run all tree and replay_cache tests for regression**
+
+Run: `cd /home/cxb/MATE-reboot && python -m pytest tests/trajectory/test_tree.py tests/trajectory/test_tree_integration.py tests/trajectory/test_replay_cache.py -v 2>&1 | tail -30`
 
 Expected: All tests pass.
 
-- [ ] **Step 3: Run full test suite**
+- [ ] **Step 4: Run full test suite**
 
 Run: `cd /home/cxb/MATE-reboot && python -m pytest tests/trajectory tests/scripts -q`
 
@@ -515,8 +524,8 @@ Expected: All tests pass (91+ passed). This is the Phase 1 completion gate.
 
 ```bash
 cd /home/cxb/MATE-reboot
-git add mate/trajectory/tree.py
-git commit -m "refactor(tree): sort buffer by global_turn_index instead of timestamp"
+git add mate/trajectory/tree.py mate/trajectory/replay_cache.py
+git commit -m "refactor(tree,replay_cache): sort buffer by global_turn_index instead of timestamp"
 ```
 
 ---
@@ -532,6 +541,7 @@ git commit -m "refactor(tree): sort buffer by global_turn_index instead of times
 | Modify | `/home/cxb/OrchRL/trajectory/backend.py` | Sync vendored backend with MATE V0.3 |
 | Modify | `/home/cxb/OrchRL/trajectory/collector.py` | Sync vendored collector with MATE V0.3 |
 | Modify | `/home/cxb/OrchRL/trajectory/tree.py` | Sync vendored tree with MATE V0.3 |
+| Modify | `/home/cxb/OrchRL/trajectory/replay_cache.py` | Sync vendored replay_cache with MATE V0.3 |
 | Modify | `/home/cxb/OrchRL/orchrl/trainer/mate_dataproto_adapter.py` | Fix UID scheme + skip_turn_predicate + prompt_ids consumption |
 | Modify | `/home/cxb/OrchRL/orchrl/trainer/mate_rollout_adapter.py` | Ensure VLLMBackend has tokenizer in tree mode |
 | Modify | `/home/cxb/OrchRL/tests/orchrl/trainer/test_mate_dataproto_adapter.py` | Update existing tests + add BGRPO grouping test |
@@ -547,12 +557,10 @@ Copy the following files from MATE, then fix relative imports:
 
 ```bash
 cd /home/cxb
-for f in datatypes.py monitor.py backend.py collector.py tree.py; do
+for f in datatypes.py monitor.py backend.py collector.py tree.py replay_cache.py; do
   cp MATE-reboot/mate/trajectory/$f OrchRL/trajectory/$f
 done
 ```
-
-Note: `replay_cache.py` is NOT copied — it was not modified in MATE V0.3 (per design doc boundary).
 
 - [ ] **Step 2: Fix imports in vendored files**
 
@@ -562,6 +570,7 @@ In each copied file, change `from mate.trajectory.` imports to relative imports 
 - `backend.py`: `from mate.trajectory.datatypes` → `from .datatypes`
 - `collector.py`: `from mate.trajectory.datatypes` → `from .datatypes`
 - `tree.py`: `from mate.trajectory.backend` → `from .backend`, etc.
+- `replay_cache.py`: `from mate.trajectory.datatypes` → `from .datatypes`
 
 Verify: `grep -r "from mate\." /home/cxb/OrchRL/trajectory/` should return no results.
 

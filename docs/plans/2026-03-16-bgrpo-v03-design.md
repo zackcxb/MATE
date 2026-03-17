@@ -168,9 +168,10 @@ SearchMAS, K=3, pilot 有 4 个 turns：
 | 2 | `monitor.py` | 新增 `_global_turn_counter`，填入 record | 新增 test: 递增性、跨 agent 唯一 |
 | 3 | `backend.py` | VLLMBackend 有 tokenizer 时生成 prompt_ids | 新增 test: 有/无 tokenizer 两条路径 |
 | 4 | `collector.py` | `_to_turn_data` 透传新字段 | 现有测试扩展 |
-| 5 | `tree.py`（可选） | `_sorted_buffer` 改用 global_turn_index 排序 | 现有 tree 测试回归 |
+| 5 | `tree.py` | `_sorted_buffer` 改用 global_turn_index 排序 | 现有 tree 测试回归 |
+| 6 | `replay_cache.py` | `from_buffer` 排序键从 timestamp 改为 global_turn_index，与 tree.py 保持一致 | 现有 replay_cache 测试回归 |
 
-**不改**：tree_rollout 编排逻辑、ReplayCache、parallel_rollout、AgentPipe.run()。
+**不改**：tree_rollout 编排逻辑、parallel_rollout、AgentPipe.run()。
 
 完成标准：`python -m pytest tests/trajectory tests/scripts -q` 全量通过。
 
@@ -227,17 +228,3 @@ OrchRL 侧对两个字段均有 fallback：
 
 旧版 MATE 产出的数据仍可被消费。
 
-## 9. 改动边界
-
-| 改动 | MATE | OrchRL |
-|------|------|--------|
-| datatypes 扩展 | 是 | vendored 同步 |
-| monitor 计数器 | 是 | — |
-| backend prompt_ids | 是 | — |
-| collector 透传 | 是 | — |
-| UID 分组修复 | — | 是 |
-| skip_turn_predicate | — | 是 |
-| prompt_ids 消费 | — | 是 |
-| tree_rollout 编排 | **不改** | — |
-| ReplayCache | **不改** | — |
-| parallel_rollout | **不改** | — |
