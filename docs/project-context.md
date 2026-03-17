@@ -76,6 +76,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 4. `docs/plans/2026-03-13-tokenization-drift-analysis.md`
 5. `docs/ref/slime-tokenization-drift-analysis.md`
 6. `docs/prompts/2026-03-15-v03-brainstorming-handoff.md`
+7. `skills/document-entry-hygiene.md`
 
 ### 冻结历史设计
 

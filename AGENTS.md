@@ -98,7 +98,30 @@ Governance frequency:
 2. Keep updates factual and state-oriented (no narrative postmortems there).
 3. Add links to newly canonical docs (skills/prompts/retros) in the reference map.
 
-## 8. Git Workflow Rules
+## 8. Entry Document Hygiene Rule
+
+Applies to entry documents that bootstrap work or phase understanding, including:
+
+1. `docs/project-context.md`
+2. handoff prompts in `docs/prompts/`
+3. phase design reset docs / pre-plans
+4. other documents whose primary role is to orient the next agent quickly
+
+When such a document is updated after a phase shift, decision reversal, or handoff rewrite, review every retained section against three checks:
+
+1. `实时性`：does it still describe the current phase rather than the previous one
+2. `有效性`：does it still help the next decision or execution step
+3. `间接性`：should this document summarize/link the information instead of embedding full detail
+
+Required cleanup rule:
+
+1. Delete or move stale conclusions, obsolete TODOs, historical validation detail, and duplicated indexes when they no longer serve the document's entry role.
+2. Do not preserve superseded context "just in case" inside entry documents; move detail to `docs/retros/`, `docs/plans/`, or `docs/ref/`.
+3. If an entry document was materially simplified or retargeted, re-check neighboring entry docs for now-invalid residue.
+
+Skill: `skills/document-entry-hygiene.md`
+
+## 9. Git Workflow Rules
 
 1. Use short-lived feature branches; avoid direct feature stacking on `main`.
 2. Keep commits atomic (one logical change per commit).
@@ -106,7 +129,7 @@ Governance frequency:
 4. Do not force-push `main`; avoid destructive history rewrites on shared branches.
 5. Never commit secrets or large local artifacts.
 
-## 9. Execution Handoff Rule
+## 10. Execution Handoff Rule
 
 Before starting a meaningful task, decide which execution venue best fits the work:
 
@@ -130,11 +153,11 @@ If a separate window/worktree is the better fit, the current agent must prepare 
 
 Do not offload work with only a vague suggestion to "open a new window". The originating agent is responsible for making the transition concrete.
 
-## 10. Objectivity Rule
+## 11. Objectivity Rule
 
 When answering questions, evaluating trade-offs, or proposing designs, provide objective assessments based on technical merit. Do not align with the user's apparent preference or prior decisions unless the evidence supports them. If the user's inclination has technical downsides, state them clearly. Agreeing for the sake of agreement wastes time and produces worse designs.
 
-## 11. Conflict Resolution Order
+## 12. Conflict Resolution Order
 
 When instructions conflict, resolve by scope and specificity:
 

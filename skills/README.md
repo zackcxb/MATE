@@ -21,3 +21,4 @@
 1. `skill-quick-code-change-explanation.md`：灵活代码变更解释。
 2. `skill-agent-self-audit-asset-precipitation.md`：任务复盘与资产沉淀。
 3. `retro-to-agents-rules.md`：复盘规则升级网关。
+4. `document-entry-hygiene.md`：入口文档的实时性/有效性/间接性审查与清理。
