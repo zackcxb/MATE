@@ -62,6 +62,7 @@
 4. `/home/cxb/rl_framework/verl/recipe/swe_agent/model_proxy.py`
 5. `/home/cxb/rl_framework/verl/recipe/swe_agent/swe_agent_loop.py`
 6. `/home/cxb/rl_framework/verl/recipe/swe_agent/trajectory.py`
+7. `docs/ref/slime-tokenization-drift-analysis.md`
 
 需要回答：
 
@@ -90,6 +91,7 @@
 3. replay 场景
 4. 多 agent / tool call / branch 场景
 5. 不同 tokenizer/template/version 组合
+6. Slime 的 full-sequence `tokens` 合同路径
 
 产出：
 

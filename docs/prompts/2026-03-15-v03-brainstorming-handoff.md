@@ -21,7 +21,8 @@
 3. 已经有一个搁置的 v0 设计：`/home/cxb/MATE-reboot/docs/plans/2026-03-04-trajectory-engine-v0-design.md` 中的 `VerlBackend`
 4. 当前 MATE 的 `prompt_ids` 仍不是生成输入，只是记录产物
 5. `swe_agent` 参考实现更严格：先构造 `prompt_ids`，再 direct generate，并做 replay/alignment 校验
-6. OrchRL 侧训练实现由同事承接；当前窗口的目标是为后续实现准备正确的 MATE 设计与契约
+6. Slime 参考分析提供了另一种更激进的方案：存储完整序列 `tokens`，训练侧直接消费，避免任何重新 tokenize
+7. OrchRL 侧训练实现由同事承接；当前窗口的目标是为后续实现准备正确的 MATE 设计与契约
 
 ## 这次 brainstorming 必须回答的问题
 
@@ -48,6 +49,9 @@
    - 分支重放场景下的 drift
    - MoE rollout/training 条件不一致
 3. 研究要输出什么 artifact、如何判定风险是否已解决
+4. 需要显式比较两类外部基线：
+   - `swe_agent` 的 `prompt_ids` first + replay/alignment 路线
+   - Slime 的 full-sequence `tokens` first + zero re-tokenize 路线
 
 ### C. 输出契约如何演进
 
@@ -73,12 +77,13 @@
 4. `/home/cxb/MATE-reboot/docs/plans/2026-03-16-bgrpo-v03-design.md`
 5. `/home/cxb/MATE-reboot/docs/plans/2026-03-16-bgrpo-v03-impl-plan.md`
 6. `/home/cxb/MATE-reboot/docs/plans/2026-03-13-tokenization-drift-analysis.md`
-7. `/home/cxb/MATE-reboot/mate/trajectory/backend.py`
-8. `/home/cxb/MATE-reboot/mate/trajectory/monitor.py`
-9. `/home/cxb/MATE-reboot/mate/trajectory/replay_cache.py`
-10. `/home/cxb/rl_framework/verl/recipe/swe_agent/model_proxy.py`
-11. `/home/cxb/rl_framework/verl/recipe/swe_agent/swe_agent_loop.py`
-12. `/home/cxb/rl_framework/verl/recipe/swe_agent/trajectory.py`
+7. `/home/cxb/MATE-reboot/docs/ref/slime-tokenization-drift-analysis.md`
+8. `/home/cxb/MATE-reboot/mate/trajectory/backend.py`
+9. `/home/cxb/MATE-reboot/mate/trajectory/monitor.py`
+10. `/home/cxb/MATE-reboot/mate/trajectory/replay_cache.py`
+11. `/home/cxb/rl_framework/verl/recipe/swe_agent/model_proxy.py`
+12. `/home/cxb/rl_framework/verl/recipe/swe_agent/swe_agent_loop.py`
+13. `/home/cxb/rl_framework/verl/recipe/swe_agent/trajectory.py`
 
 ## 工作方式要求
 

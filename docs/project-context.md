@@ -85,6 +85,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | OrchRL 主仓（含训练代码） | `/home/cxb/OrchRL/` | 训练侧适配层（`orchrl/trainer/mate_*`）+ trajectory 副本 |
 | OrchRL Search MAS | `/home/cxb/OrchRL/examples/mas_app/search/` | V0/V0.2 端到端验证的 MAS 应用 |
 | Verl 参考实现 | `/home/cxb/rl_framework/verl/` | `swe_agent` 的 direct token generation、proxy、alignment 参考 |
+| Slime 参考分析 | `docs/ref/slime-tokenization-drift-analysis.md` | full-sequence tokens 合同、零 re-tokenize 训练路径参考 |
 | Verl 子模块 | `third_party/verl`（git submodule） | RL 框架基线 |
 | 团队架构 PPT | `/home/cxb/multi-agent/docs/multi-agent-rl.pdf` | MARL/BGRPO 相关算法参考 |
 
@@ -117,6 +118,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-09-trajectory-engine-v02-impl-plan.md` | 实施计划 | 9 个 Task、TDD 步骤、依赖关系 |
 | `docs/plans/2026-03-11-trajectory-public-api-boundary.md` | API 边界 | V0.2 阶段稳定外部 API 与内部/暂不承诺接口划分 |
 | `docs/plans/2026-03-13-tokenization-drift-analysis.md` | 技术分析 | 推理侧与训练侧 tokenization drift 风险分析 |
+| `docs/ref/slime-tokenization-drift-analysis.md` | 参考分析 | Slime 如何通过完整序列 tokens 合同避免 tokenization drift |
 | `docs/retros/2026-03-11-orchrl-tree-adapter-sync.md` | 联调进展 | OrchRL tree adapter 接入状态、本地测试结果、smoke 阻塞点 |
 | `docs/retros/2026-03-14-orchrl-tree-smoke-server-sync.md` | 联调进展 | 新服务器真实 smoke clean exit 证据、partial policy batch 结论 |
 | `docs/retros/2026-03-15-orchrl-tree-smoke-upstreaming-wrapup.md` | 收口记录 | OrchRL `main` 上库形态、保留项与 MATE 审查重点 |
