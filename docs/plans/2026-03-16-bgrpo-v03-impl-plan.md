@@ -1,231 +1,168 @@
-# V0.3 BGRPO Implementation Plan (Rev B)
+# V0.3 Implementation Plan (Reset): MATE Token-Drift First
 
-> Goal: 在接受 PR #10 主体思路的前提下，补齐其 correctness gap，并完成 MATE 合同增强（`global_turn_index` + `prompt_ids`），使 BGRPO 在 tree 模式下稳定可用。
+> Status: **Brainstorming reset -> execution-ready plan**  
+> Date: 2026-03-17  
+> Scope: **MATE only**
 
-> Inputs reviewed on 2026-03-17:
-> - OrchRL PR #10 (`add JD algorithm with tree sampling`)
-> - OrchRL PR #9 (`Remove self-contained verl code...`)
-> - `docs/plans/2026-03-16-bgrpo-v03-design.md`（Rev B）
+## 1. 目标与边界
 
----
+### 1.1 本迭代目标
 
-## 0. 范围与原则
+1. 在 MATE 侧落地 `prompt_ids` 数据合同，降低 token drifting 风险。
+2. 产出 `global_turn_index` 必要性的证据化结论（Promote/Defer）。
 
-### In Scope
+### 1.2 本迭代不做
 
-1. 接受 PR #10 的主干机制：`group_id` 分组 + decision-point batch。
-2. 修复 PR #10 已识别风险：sample 混组、静默降级、分组完整性诊断。
-3. 落地 MATE 合同增强：`global_turn_index`、`prompt_ids`。
-4. OrchRL 适配层优先消费新字段，并保留 fallback。
+1. OrchRL 侧实现与配置改动（由同事负责）。
+2. BGRPO 分组逻辑改造。
+3. 跨仓联动重构。
 
-### Out of Scope
+## 2. 执行策略
 
-1. 大规模训练策略优化（如 packing/吞吐调优）。
-2. 非 BGRPO 必需的 reward 体系重构。
+按“先合同、再验证、后决策”的顺序执行。
 
-### 执行顺序
+1. **Phase A**：`prompt_ids` 合同链路实现（MATE 内闭环）。
+2. **Phase B**：token-drift 验证与可观测性增强。
+3. **Phase C**：`global_turn_index` 必要性评估并给出结论。
 
-1. 先解决依赖 PR 的合入阻断。
-2. 再补 OrchRL 侧 correctness patch。
-3. 再落 MATE 合同增强与回传链路。
-4. 最后进行端到端验证与短跑诊断。
+## 3. Phase A — prompt_ids 合同链路
 
----
+### A1. 数据结构扩展
 
-## 1. Phase A: PR 基线落地与阻断修复
+改动文件：
 
-### A1. 处理 PR #9 合入阻断
+1. `mate/trajectory/datatypes.py`
 
-**目标**：确保依赖迁移后仓库可导入、可启动。
+任务：
 
-- [ ] 修复 `orchrl/__init__.py` 的语法错误（f-string 引号冲突）。
-- [ ] 验证 `trajectory -> orchrl.agent_trajectory_engine` 导入迁移在以下文件可运行：
-  - `orchrl/trainer/mate_dataproto_adapter.py`
-  - `orchrl/trainer/mate_rollout_adapter.py`
-  - `orchrl/trainer/mate_reward_bridge.py`
-- [ ] 验证 `train.py` 对新版 `verl` 导入路径可用：
-  - `orchrl/trainer/train.py`
+- [ ] `ModelResponse` 增加 `prompt_ids: list[int] | None = None`
+- [ ] `InteractionRecord` 增加 `prompt_ids: list[int] | None = None`
+- [ ] `TurnData` 增加 `prompt_ids: list[int] | None = None`
 
-**验收**：
-- `python -m py_compile` 覆盖上述关键文件通过。
-- 最小化导入 smoke（仅 import）通过。
+验收：
 
-### A2. 合入 PR #10 主体能力
+- [ ] 相关类型构造与序列化路径测试通过
 
-**目标**：以 PR #10 为 BGRPO 基线，保留其已验证可行的核心机制。
+### A2. backend 生成 prompt_ids
 
-- [ ] 保留 `tree_episodes_to_decision_point_batches` 新路径。
-- [ ] 保留 `_update_parameters` 中 `uid -> group_id -> restore` 流程。
-- [ ] 保留 tree 模式使用 decision-point adapter 的路由切换。
+改动文件：
 
-**验收**：
-- PR #10 新增单测（group_id 替换/恢复等）通过。
+1. `mate/trajectory/backend.py`
 
----
+任务：
 
-## 2. Phase B: OrchRL correctness gap 补齐（PR #10 后续补丁）
+- [ ] tokenizer 可用时，基于与推理一致的 chat template 生成 `prompt_ids`
+- [ ] tokenizer 不可用时返回 `None`
+- [ ] 不改变现有请求 payload 与生成路径
 
-### B1. 修复 sample 维度混组
+验收：
 
-**问题**：当前 `group_id` 未包含 `sample_idx`，`n_samples_per_prompt > 1` 时会跨 sample 混组。
+- [ ] 有/无 tokenizer 两条路径均有单测
 
-**改动文件**：
-- `orchrl/trainer/mate_dataproto_adapter.py`
+### A3. monitor / collector 透传
 
-**任务**：
-- [ ] 将 `sample_idx` 纳入 `group_id`。
-- [ ] 同步更新调试字段/日志输出，确保可直接观察 sample 维度。
+改动文件：
 
-**验收**：
-- [ ] 新增单测：同 `prompt_group_id` + 不同 `sample_idx` 不同组。
-- [ ] `n_samples_per_prompt=2` 的构造数据组大小符合预期。
+1. `mate/trajectory/monitor.py`
+2. `mate/trajectory/collector.py`
 
-### B2. 分支点选择从“静默降级”改为“可观测校验”
+任务：
 
-**问题**：`_select_branch_decision_turn` 在异常匹配时 fallback/skip，可能悄然导致 singleton 组。
+- [ ] Monitor 将 `ModelResponse.prompt_ids` 写入 `InteractionRecord`
+- [ ] Collector 将 `InteractionRecord.prompt_ids` 写入 `TurnData`
 
-**改动文件**：
-- `orchrl/trainer/mate_dataproto_adapter.py`
+验收：
 
-**任务**：
-- [ ] 当 branch decision-turn 缺失或 role 不匹配时，记录结构化告警（包含 prompt_group_id/branch_turn/episode_id）。
-- [ ] 提供严格模式开关（训练时可选择 fail-fast）。
+- [ ] 端到端单测可在最终 `TurnData` 看到 `prompt_ids`
 
-**验收**：
-- [ ] 新增单测：缺失匹配时触发告警或抛错（按模式）。
+## 4. Phase B — token-drift 验证
 
-### B3. 增加 group 完整性诊断
+### B1. 增加一致性对照检查（MATE 侧）
 
-**问题**：当前没有针对 decision-point group size 的硬性校验，异常时不易发现。
+目标：提供可审计证据，而非仅靠主观判断。
 
-**改动文件**：
-- `orchrl/trainer/multi_agents_ppo_trainer.py`
+任务：
 
-**任务**：
-- [ ] 在 `_finalize_batch_for_update`/`_update_parameters` 前后记录 group size 分布。
-- [ ] 增加最小组规模与异常比例指标（例如 singleton_ratio）。
+- [ ] 在测试/诊断脚本中加入抽样对照：`stored_prompt_ids` vs `re-tokenized_prompt_ids`
+- [ ] 记录 mismatch rate 与典型样本
 
-**验收**：
-- [ ] 训练日志中可直接看到 group_size histogram 与异常计数。
-- [ ] 当大量 singleton 发生时有明确告警。
+产物建议：
 
-### B4. reward 语义策略化（默认 final_reward）
+1. `artifacts/*token_drift*.json`
+2. 回归日志中的 mismatch 摘要
 
-**问题**：PR #10 固定 `final_reward`，缺少显式配置声明。
+### B2. 回归验证
 
-**改动文件**：
-- `orchrl/trainer/mate_dataproto_adapter.py`
-- `orchrl/config/search/*.yaml`
+命令基线：
 
-**任务**：
-- [ ] 保持默认 `final_reward`。
-- [ ] 增加可选策略（例如 `tree_reward_source: final_reward|role_reward`），仅作为扩展点。
+```bash
+cd /home/cxb/MATE-reboot
+python -m pytest tests/trajectory tests/scripts -q
+```
 
-**验收**：
-- [ ] 默认配置行为与 PR #10 一致。
-- [ ] 切到 role_reward 时有单测覆盖。
+验收：
 
----
+- [ ] 全量通过
+- [ ] token-drift 对照产物生成成功
 
-## 3. Phase C: MATE 合同增强（V0.3 必做）
+## 5. Phase C — global_turn_index 必要性评估
 
-### C1. 数据结构扩展
+### C1. 评估实验
 
-**改动文件（MATE）**：
-- `mate/trajectory/datatypes.py`
+任务：
 
-**任务**：
-- [ ] `TurnData` 增加 `global_turn_index`、`prompt_ids`。
-- [ ] `InteractionRecord` 增加 `global_turn_index`、`prompt_ids`。
-- [ ] `ModelResponse` 增加 `prompt_ids`。
+- [ ] 构造并发 turn 采样场景，统计 timestamp 排序歧义是否可复现
+- [ ] 判断歧义是否实际影响 replay/branch 语义
 
-### C2. 采集链路贯通
+### C2. 决策输出
 
-**改动文件（MATE）**：
-- `mate/trajectory/monitor.py`
-- `mate/trajectory/backend.py`
-- `mate/trajectory/collector.py`
+必须输出二选一结论：
 
-**任务**：
-- [ ] Monitor 维护全局 turn 计数并写入 record。
-- [ ] VLLMBackend 生成并透传 prompt_ids（tokenizer 可用时）。
-- [ ] Collector 透传新字段到 TurnData。
+1. **Promote**：下一迭代将 `global_turn_index` 升级为合同字段并实施
+2. **Defer**：当前保持 timestamp 方案，记录风险和触发条件
 
-### C3. Tree/Replay 顺序对齐
+交付位置：
 
-**改动文件（MATE）**：
-- `mate/trajectory/tree.py`
-- `mate/trajectory/replay_cache.py`
+1. `docs/plans/2026-03-16-bgrpo-v03-design.md`（结论回填）
+2. `docs/project-context.md`（阶段状态更新）
 
-**任务**：
-- [ ] 排序主键从 timestamp 切换为 `global_turn_index`。
-- [ ] 旧数据缺字段时保持 timestamp fallback。
+## 6. 测试清单（本迭代）
 
-### C4. OrchRL 消费新字段
+### 必测
 
-**改动文件（OrchRL）**：
-- `orchrl/trainer/mate_dataproto_adapter.py`
+1. datatypes 新字段兼容性测试
+2. backend prompt_ids 生成测试（有/无 tokenizer）
+3. monitor/collector prompt_ids 透传测试
+4. token-drift 对照诊断测试
 
-**任务**：
-- [ ] `_iter_global_turns` 优先消费 `turn.global_turn_index`。
-- [ ] `_tokenize_messages` 之前优先消费 `turn.prompt_ids`。
-- [ ] 缺失时 fallback 保持兼容。
+### 可选增强
 
----
+1. 真实环境 smoke 抽样验证 prompt_ids 完整率
 
-## 4. 测试与验证计划
+## 7. 风险与缓解
 
-### Level 1: 单元测试（无 GPU）
+1. **tokenizer 可用性不稳定**  
+   缓解：允许 `prompt_ids=None` fallback，不阻断主链路。
 
-- [ ] `group_id` 规则测试：pilot/branch 同 decision-point 同组，`uid` 唯一。
-- [ ] sample 隔离测试：`sample_idx` 不同不混组。
-- [ ] decision-point 选择测试：continuation 不入 batch。
-- [ ] `uid` 替换-恢复异常路径测试（`compute_advantage` 抛错时恢复）。
-- [ ] MATE 新字段链路测试：monitor -> collector -> dataproto。
+2. **本地重算仍可能与推理端微差异**  
+   缓解：明确对照统计，不把“理论一致”当成结论。
 
-### Level 2: 集成 smoke（小规模）
+3. **global_turn_index 评估结论拖延**  
+   缓解：将 C2 作为本迭代强制交付项，必须给 Promote/Defer。
 
-- [ ] Tree mode 2-5 step 训练 smoke。
-- [ ] 记录并检查 group_size histogram / singleton_ratio。
-- [ ] 检查 advantage 非全零、loss 无 NaN/Inf。
+## 8. 里程碑
 
-### Level 3: 短跑诊断（8 卡，50-100 step）
+### M1: prompt_ids 合同落地
 
-- [ ] reward 曲线无明显异常发散。
-- [ ] group 统计稳定（异常比例可解释）。
-- [ ] 抽样比对 `prompt_ids` 与 fallback tokenize 差异。
+- datatypes/backend/monitor/collector 完成
+- 对应单测通过
 
----
+### M2: token-drift 证据产出
 
-## 5. 交付物与里程碑
+- mismatch 统计与样例产物齐全
+- 回归通过
 
-### Milestone M1（PR 合入可用）
+### M3: global_turn_index 决策闭环
 
-- PR #9 阻断修复完成。
-- PR #10 主体能力可运行。
-
-### Milestone M2（OrchRL correctness 补齐）
-
-- sample 混组修复。
-- 分支点校验与组完整性诊断上线。
-
-### Milestone M3（V0.3 完成）
-
-- MATE 合同增强完成并被 OrchRL 优先消费。
-- Level 1/2/3 验证全部通过。
-
----
-
-## 6. 风险清单
-
-1. **依赖漂移风险**：PR #9 切到外部 `verl` 后 API 变更可能影响训练路径。  
-   缓解：关键路径 smoke + 版本锁定。
-
-2. **旧数据兼容风险**：历史轨迹无新字段。  
-   缓解：保留 fallback，并在日志中标记 fallback 命中率。
-
-3. **分组退化风险**：失败分支过多导致 singleton 组。  
-   缓解：组规模监控 + 告警 + 训练前阈值检查。
-
-4. **token-drift 残留风险**：`prompt_ids` 缺失时仍依赖 fallback tokenize。  
-   缓解：推动 rollout 侧尽快稳定产出 `prompt_ids`，并在训练日志统计缺失比例。
+- 输出 Promote 或 Defer
+- 文档状态更新完成

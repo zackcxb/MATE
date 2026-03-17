@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-14（MATE 侧材料更新 + OrchRL tree smoke 迁移交接）
+> 最后更新：2026-03-17（V0.3 状态回退到 brainstorming 前置，token-drift first）
 
 ## 项目定位
 
@@ -8,14 +8,18 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 实现已完成，MATE-reboot 侧验证通过。** 当前基线分支为 `main`；截至 2026-03-14，本仓回归测试为 `python -m pytest tests/trajectory tests/scripts -q` → `90 passed, 1 skipped`。V0.2 核心目标已经在采集侧完成：验证重放式树状分支采样的可行性、正确性和基础收益信号。
+**V0.2 已收口；V0.3 已回退到 brainstorming 前置并重置范围。** 当前迭代聚焦 `MATE` 侧 token-drift 问题，不再在本仓推进 OrchRL 训练侧改动。
+
 
 - 当前状态：
   - MATE-reboot 采集侧已具备 `tree_rollout`、`ReplayCache`、V0.2 验证脚本和可视化支持
   - OrchRL 训练侧当前仍通过 adapter + `VLLMBackend` 集成 MATE，不使用 `AsyncLLMServerManager` 直连路径
-  - OrchRL 侧 `tree_rollout` / `TreeEpisodeResult` 消费闭环代码已在独立 worktree 完成，本地测试通过；尚未合入主工作区
-  - 真实 tree smoke 已推进到 `tree_rollout -> pilot_pipe.run(...)`，当前 blocker 已下沉到 Search MAS 子进程 / 当前服务器硬件环境，而不是已知 MATE blocker
-  - 当前操作优先级不是继续做 MATE 结构性改造，而是在新服务器完成真实 tree smoke 并根据结果决定是否需要新的 MATE 修补
+  - OrchRL 本地 `main` 已包含 tree smoke 收口提交：`1c21f20`（tree rollout smoke 支持）和 `f3d9a48`（example 收拢）
+  - OrchRL 真实 Search MAS tree smoke 已再次验证 clean exit `0`，证据为 `step 0 started`、`training/global_step:0.000`、`step 1 started`、`Cleanup completed`
+  - OrchRL trainer 已接受 “partial policy batches 是合法轨迹结果” 这一现实语义；当前策略是仅更新当步有 batch 的 policy，并记录 skipped policy metrics
+  - OrchRL vendored `trajectory/` 与 MATE V0.2 tree 语义保持一致；当前唯一代码差异是 `trajectory/replay_cache.py` 为 vendoring 所需的相对导入改写，不构成语义分叉
+  - 截至 2026-03-15，未发现要求 MATE 再修改 `tree_rollout`、`TreeEpisodeResult`、`ReplayCache` 或核心采集逻辑的 blocker 级新证据
+  - 当前操作优先级已经从“继续支撑 V0.2 联调”转为“完成阶段收口、冻结事实基线，并决定 V0.3 的设计入口”
 - V0 真实环境验证（2026-03-09，real 模式）：
   - 记录：`docs/retros/2026-03-09-trajectory-engine-real-validation.md`
   - 环境：vLLM（`http://127.0.0.1:8000`）+ OrchRL Search MAS + 检索服务（`http://127.0.0.1:18080/retrieve`）
@@ -102,10 +106,13 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 | `docs/plans/2026-03-11-trajectory-public-api-boundary.md` | API 边界 | V0.2 阶段稳定外部 API 与内部/暂不承诺接口划分 |
 | `docs/plans/2026-03-13-tokenization-drift-analysis.md` | 技术分析 | 推理侧与训练侧 tokenization drift 风险分析 |
 | `docs/retros/2026-03-11-orchrl-tree-adapter-sync.md` | 联调进展 | OrchRL tree adapter 接入状态、本地测试结果、smoke 阻塞点 |
+| `docs/retros/2026-03-14-orchrl-tree-smoke-server-sync.md` | 联调进展 | 新服务器真实 smoke clean exit 证据、partial policy batch 结论 |
+| `docs/retros/2026-03-15-orchrl-tree-smoke-upstreaming-wrapup.md` | 收口记录 | OrchRL `main` 上库形态、保留项与 MATE 审查重点 |
 | `docs/prompts/2026-03-09-v02-brainstorming.md` | 会话 prompt | V0.2 brainstorming 启动模板 |
 | `docs/prompts/2026-03-09-v02-implementation.md` | 会话 prompt | V0.2 实施会话启动模板 |
 | `docs/prompts/2026-03-09-v02-master-agent.md` | 会话 prompt | V0.2 Master Agent 启动模板（统筹+验证） |
 | `docs/prompts/2026-03-14-mate-tree-smoke-handoff.md` | 会话 prompt | 新服务器 MATE Agent 交接 prompt（真实 tree smoke 支持） |
+| `docs/prompts/2026-03-15-v03-brainstorming-handoff.md` | 会话 prompt | V0.3 brainstorming 启动模板（阶段切换用） |
 | `scripts/USAGE.md` | 用法文档 | 三个验证脚本的参数、输出格式、工作流 |
 
 ## 待办
@@ -123,7 +130,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] 与训练侧进行联调（训练侧已通过 adapter 方式完成端到端联调）
 - [x] 整理代码向 OrchRL 仓库提交 PR（已合入 OrchRL main `1664eb5`）
 
-### V0.2（实现完成 + 验证通过）
+### V0.2（实现完成 + 收口完成）
 
 - [x] V0.2 设计：确定开发仓库（MATE-reboot）、特性范围、技术参考调研
 - [x] V0.2 设计审核（APPROVE WITH CHANGES，已融入实施计划）
@@ -137,7 +144,14 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 - [x] Task 7: 集成测试
 - [x] Task 8: 端到端验证脚本 `scripts/run_tree_validation.py`（三轮递进验证 + 对比模式）
 - [x] Task 9: 轨迹可视化支持 V0.2 schema（`scripts/visualize_trajectories.py` 更新）
-- [ ] 在新服务器完成 OrchRL tree 模式真实 smoke，并据结果决定 OrchRL worktree 合并与是否需要新的 MATE blocker 修补
+- [x] 在新服务器完成 OrchRL tree 模式真实 smoke，并确认当前没有新的 MATE blocker 级修补需求
+
+### 下一阶段准备（V0.3 reset 后）
+
+- [ ] 完成 MATE 侧 `prompt_ids` 合同落地（datatypes/backend/monitor/collector）
+- [ ] 产出 token-drift 对照证据（stored prompt_ids vs re-tokenized ids）
+- [ ] 对 `global_turn_index` 必要性给出 Promote/Defer 二选一结论
+- [ ] 明确 OrchRL 侧工作由同事承接，本仓只维护 MATE 契约与证据
 
 #### V0.2 真实环境验证（2026-03-11，real 模式）
 
@@ -169,3 +183,30 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 1. OrchRL `agent.py:29` f-string 含反斜杠，Python < 3.12 报 SyntaxError → 已修复为临时变量
 2. `SEARCH_MAS_LLM_BASE_URL` 环境变量会覆盖 AgentPipe monitor URL → 验证脚本在 real 模式下主动 `os.environ.pop`
+
+#### OrchRL tree smoke 收口复核（2026-03-15）
+
+- 审查基线：`/home/cxb/OrchRL` 本地 `main`
+- 关键提交：
+  - `1c21f20 feat: add MATE tree rollout smoke support`
+  - `f3d9a48 refactor: colocate search MAS smoke runner with example`
+- 训练侧定向回归：
+
+```bash
+cd /home/cxb/OrchRL
+PYTHONPATH=.:./verl pytest \
+  tests/orchrl/trainer/test_mate_config.py \
+  tests/orchrl/trainer/test_mate_rollout_adapter.py \
+  tests/orchrl/trainer/test_mate_dataproto_adapter.py \
+  tests/orchrl/trainer/test_multi_agents_ppo_trainer_mate.py \
+  tests/orchrl/examples/test_search_mas_tree_run.py \
+  tests/orchrl/config/test_search_mas_tree_real_smoke_config.py \
+  tests/trajectory -q
+```
+
+- 结果：`79 passed, 2 warnings`
+- 当前判断：
+  - OrchRL 对 MATE tree public API 的使用仍限制在稳定外部接口：`parallel_rollout` / `tree_rollout`、`AgentPipeConfig`、`ModelMappingEntry`、`VLLMBackend`、结果 datatypes
+  - “partial policy batches” 当前被作为合法 Search MAS tree 轨迹结果处理，不再被错误视为 trainer 异常
+  - OrchRL `trajectory/` vendored 快照没有发现 MATE 语义分叉；唯一差异为相对导入适配
+  - 当前没有证据支持继续把 V0.2 问题定义为 MATE 侧 blocker
