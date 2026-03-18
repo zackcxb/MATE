@@ -6,6 +6,7 @@ def _make_record(
     agent_role: str,
     turn_index: int,
     response_text: str = "cached",
+    metadata: dict[str, object] | None = None,
 ) -> InteractionRecord:
     return InteractionRecord(
         agent_role=agent_role,
@@ -18,7 +19,7 @@ def _make_record(
         logprobs=[-0.1, -0.2, -0.3],
         finish_reason="stop",
         episode_id="pilot-001",
-        metadata={},
+        metadata=metadata or {},
     )
 
 
@@ -151,3 +152,20 @@ def test_replay_cache_size() -> None:
     )
 
     assert len(cache) == 2
+
+
+def test_replay_cache_preserves_routed_experts() -> None:
+    cache = ReplayCache.from_buffer(
+        [
+            _make_record(
+                "verifier",
+                0,
+                metadata={"routed_experts": [[[7, 8]]]},
+            )
+        ]
+    )
+
+    entry = cache.lookup("verifier", 0)
+
+    assert entry is not None
+    assert entry.routed_experts == [[[7, 8]]]

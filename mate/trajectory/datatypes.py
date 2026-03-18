@@ -16,6 +16,9 @@ class ModelRequest:
     agent_role: str
     messages: list[dict[str, Any]]
     generation_params: dict[str, Any]
+    prompt_ids: list[int] | None = None
+    render_fingerprint: dict[str, Any] = field(default_factory=dict)
+    sampling_fingerprint: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -25,6 +28,8 @@ class ModelResponse:
     logprobs: list[float] | None
     finish_reason: str
     prompt_ids: list[int] | None = None
+    routed_experts: list[Any] | None = None
+    runtime_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -54,6 +59,9 @@ class TurnData:
     finish_reason: str
     timestamp: float
     prompt_ids: list[int] | None = None
+    replayed: bool = False
+    branch_phase: str | None = None
+    routed_experts: list[Any] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

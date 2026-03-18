@@ -17,6 +17,7 @@ from mate.trajectory.datatypes import (
 )
 from mate.trajectory import pipe as pipe_module
 from mate.trajectory.pipe import AgentPipe, AgentPipeConfig
+from mate.trajectory.renderer import ChatRenderer
 from mate.trajectory.reward import FunctionRewardProvider
 
 
@@ -47,6 +48,142 @@ def _make_config() -> AgentPipeConfig:
         model_mapping={"verifier": ModelMappingEntry()},
         timeout=5.0,
     )
+
+
+async def test_agent_pipe_passes_renderer_to_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+    renderer = ChatRenderer.from_tokenizer(object(), model_name="Qwen")
+    captured: dict[str, object] = {}
+
+    class FakeMonitor:
+        def __init__(self, **kwargs):
+            captured["renderer"] = kwargs.get("renderer")
+            self._buffer: list[InteractionRecord] = []
+
+        async def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
+            return 19010
+
+        async def stop(self) -> None:
+            return None
+
+        def get_buffer(self) -> list[InteractionRecord]:
+            return self._buffer
+
+    class FakeLauncher:
+        def __init__(self, **_kwargs):
+            pass
+
+        def prepare_config(
+            self,
+            config_template: dict[str, object],
+            monitor_url: str,
+            agent_roles: list[str],
+        ) -> Path:
+            return Path("/tmp/fake.yaml")
+
+        def launch(self, command: str) -> object:
+            return object()
+
+        def wait(self, process: object, timeout: float | None = None) -> int:
+            return 0
+
+        def cleanup(self) -> None:
+            return None
+
+    monkeypatch.setattr(pipe_module, "ModelMonitor", FakeMonitor)
+    monkeypatch.setattr(pipe_module, "MASLauncher", FakeLauncher)
+
+    config = AgentPipeConfig(
+        mas_command_template="echo ignored {config_path} {prompt}",
+        config_template={
+            "llm": {"base_url": "http://placeholder/v1"},
+            "agents": {"verifier": {}},
+        },
+        model_mapping={"verifier": ModelMappingEntry()},
+        timeout=5.0,
+        renderer=renderer,
+    )
+    pipe = AgentPipe(config=config, backend=EchoBackend())
+
+    result = await pipe.run(prompt="q", reward_provider=FunctionRewardProvider(_reward_fn))
+
+    assert result.metadata["exit_code"] == 0
+    assert captured["renderer"] is renderer
+
+
+async def test_agent_pipe_attaches_drift_artifact_for_canonical_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    renderer = ChatRenderer.from_tokenizer(object(), model_name="Qwen")
+
+    class FakeMonitor:
+        def __init__(self, **_kwargs):
+            self._buffer = [
+                InteractionRecord(
+                    agent_role="verifier",
+                    turn_index=0,
+                    timestamp=1.0,
+                    messages=[{"role": "user", "content": "hi"}],
+                    generation_params={},
+                    response_text="echo:verifier",
+                    token_ids=[1],
+                    logprobs=[-0.1],
+                    finish_reason="stop",
+                    episode_id="buffer-episode",
+                    prompt_ids=[101, 102],
+                    metadata={"render_fingerprint": {"tokenizer": "tok-v1"}},
+                )
+            ]
+
+        async def start(self, host: str = "127.0.0.1", port: int = 0) -> int:
+            return 19011
+
+        async def stop(self) -> None:
+            return None
+
+        def get_buffer(self) -> list[InteractionRecord]:
+            return self._buffer
+
+    class FakeLauncher:
+        def __init__(self, **_kwargs):
+            pass
+
+        def prepare_config(
+            self,
+            config_template: dict[str, object],
+            monitor_url: str,
+            agent_roles: list[str],
+        ) -> Path:
+            return Path("/tmp/fake.yaml")
+
+        def launch(self, command: str) -> object:
+            return object()
+
+        def wait(self, process: object, timeout: float | None = None) -> int:
+            return 0
+
+        def cleanup(self) -> None:
+            return None
+
+    monkeypatch.setattr(pipe_module, "ModelMonitor", FakeMonitor)
+    monkeypatch.setattr(pipe_module, "MASLauncher", FakeLauncher)
+
+    config = AgentPipeConfig(
+        mas_command_template="echo ignored {config_path} {prompt}",
+        config_template={
+            "llm": {"base_url": "http://placeholder/v1"},
+            "agents": {"verifier": {}},
+        },
+        model_mapping={"verifier": ModelMappingEntry()},
+        timeout=5.0,
+        renderer=renderer,
+    )
+    pipe = AgentPipe(config=config, backend=EchoBackend())
+
+    result = await pipe.run(prompt="q", reward_provider=FunctionRewardProvider(_reward_fn))
+    turn = result.trajectory.agent_trajectories["verifier"][0]
+
+    assert turn.metadata["drift_artifact"]["runtime_prompt_ids"] == [101, 102]
+    assert turn.metadata["drift_artifact"]["mismatch"] is False
 
 
 async def test_agent_pipe_end_to_end(tmp_path: Path) -> None:

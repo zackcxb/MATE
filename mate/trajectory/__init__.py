@@ -1,4 +1,4 @@
-from .backend import InferenceBackend, VLLMBackend
+from .backend import InferenceBackend, VLLMBackend, VerlBackend
 from .collector import TrajectoryCollector
 from .datatypes import (
     BranchResult,
@@ -11,20 +11,26 @@ from .datatypes import (
     TreeEpisodeResult,
     TurnData,
 )
+from .diagnostics import build_drift_artifact
+from .exporters import export_tokenized_turn
 from .launcher import MASLauncher
 from .monitor import ModelMonitor
 from .parallel import parallel_rollout
 from .pipe import AgentPipe, AgentPipeConfig
 from .replay_cache import ReplayCache
+from .renderer import ChatRenderer
 from .reward import FunctionRewardProvider, RewardProvider, RewardWorker
 from .tree import tree_rollout
+from .validator import validate_runtime_request, validate_runtime_response
 
 __all__ = [
     "AgentPipe",
     "AgentPipeConfig",
     "BranchResult",
+    "build_drift_artifact",
     "EpisodeResult",
     "EpisodeTrajectory",
+    "export_tokenized_turn",
     "FunctionRewardProvider",
     "InferenceBackend",
     "InteractionRecord",
@@ -37,9 +43,13 @@ __all__ = [
     "ReplayCache",
     "RewardProvider",
     "RewardWorker",
+    "ChatRenderer",
     "TreeEpisodeResult",
     "TrajectoryCollector",
     "TurnData",
+    "VerlBackend",
     "VLLMBackend",
+    "validate_runtime_request",
+    "validate_runtime_response",
     "tree_rollout",
 ]

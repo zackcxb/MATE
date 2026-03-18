@@ -258,6 +258,46 @@ async def test_tree_rollout_branch_failure_is_graceful(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_tree_rollout_marks_replayed_and_branch_phases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pilot_buffer = _make_pilot_buffer()
+    pilot_result = _make_episode_result(
+        "pilot-episode",
+        {"searcher": 4},
+    )
+
+    class FakeAgentPipe:
+        def __init__(self, config, backend, replay_cache=None):
+            self._replay_cache = replay_cache
+
+        async def run(self, prompt, reward_provider, allow_partial=False):
+            if self._replay_cache is None:
+                return pilot_result
+            return _make_episode_result("branch-1", {"searcher": 4})
+
+        def last_buffer(self):
+            return list(pilot_buffer)
+
+    monkeypatch.setattr("mate.trajectory.tree.AgentPipe", FakeAgentPipe)
+
+    result = await tree_rollout(
+        prompt="branch semantics",
+        reward_provider=FunctionRewardProvider(_reward_fn),
+        config=_make_config(),
+        backend=_DummyBackend(),
+        k_branches=1,
+    )
+
+    branch_turns = result.branch_results[2].episode_result.trajectory.agent_trajectories["searcher"]
+
+    assert branch_turns[0].replayed is True
+    assert branch_turns[0].branch_phase == "replay_prefix"
+    assert branch_turns[2].branch_phase == "branch_point"
+    assert branch_turns[3].branch_phase == "post_branch"
+
+
+@pytest.mark.asyncio
 async def test_tree_rollout_k_branches_param(monkeypatch: pytest.MonkeyPatch) -> None:
     pilot_buffer = _make_pilot_buffer()
     pilot_result = _make_episode_result(

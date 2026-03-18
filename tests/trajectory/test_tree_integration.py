@@ -131,14 +131,18 @@ for role in ("verifier", "answerer"):
 
     verifier_turn_turn_0 = branch_at_turn_0.episode_result.trajectory.agent_trajectories["verifier"][0]
     answerer_turn_turn_0 = branch_at_turn_0.episode_result.trajectory.agent_trajectories["answerer"][0]
-    assert verifier_turn_turn_0.metadata.get("replayed") is not True
-    assert answerer_turn_turn_0.metadata.get("replayed") is not True
+    assert verifier_turn_turn_0.replayed is False
+    assert verifier_turn_turn_0.branch_phase == "branch_point"
+    assert answerer_turn_turn_0.replayed is False
+    assert answerer_turn_turn_0.branch_phase == "post_branch"
     assert verifier_turn_turn_0.response_text == "verifier-response-3"
     assert answerer_turn_turn_0.response_text == "answerer-response-4"
 
     verifier_turn_turn_1 = branch_at_turn_1.episode_result.trajectory.agent_trajectories["verifier"][0]
     answerer_turn_turn_1 = branch_at_turn_1.episode_result.trajectory.agent_trajectories["answerer"][0]
-    assert verifier_turn_turn_1.metadata["replayed"] is True
+    assert verifier_turn_turn_1.replayed is True
+    assert verifier_turn_turn_1.branch_phase == "replay_prefix"
     assert verifier_turn_turn_1.response_text == pilot_verifier_turn.response_text
-    assert answerer_turn_turn_1.metadata.get("replayed") is not True
+    assert answerer_turn_turn_1.replayed is False
+    assert answerer_turn_turn_1.branch_phase == "branch_point"
     assert answerer_turn_turn_1.response_text == "answerer-response-5"

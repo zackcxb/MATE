@@ -3,10 +3,12 @@ import asyncio
 import httpx
 import pytest
 
-from mate.trajectory.backend import InferenceBackend
+from mate.trajectory.backend import InferenceBackend, VerlBackend
 from mate.trajectory.datatypes import InteractionRecord, ModelMappingEntry, ModelRequest, ModelResponse
 from mate.trajectory.monitor import ModelMonitor
 from mate.trajectory.replay_cache import ReplayCache
+from mate.trajectory.renderer import ChatRenderer
+from mate.trajectory.diagnostics import build_drift_artifact
 
 
 class RecordingBackend(InferenceBackend):
@@ -401,3 +403,139 @@ async def test_collects_prompt_ids_to_buffer():
         assert record.prompt_ids == [101, 102, 103]
     finally:
         await monitor.stop()
+
+
+async def test_monitor_renders_prompt_ids_for_verl_backend():
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt, tokenize):
+            assert messages == [{"role": "user", "content": "q"}]
+            assert add_generation_prompt is True
+            assert tokenize is True
+            return [201, 202]
+
+        def decode(self, token_ids, skip_special_tokens=True):
+            assert token_ids == [11]
+            assert skip_special_tokens is True
+            return "decoded-by-renderer-tokenizer"
+
+    class FakeOutput:
+        token_ids = [11]
+        log_probs = [-0.1]
+        stop_reason = "stop"
+
+    class FakeServerManager:
+        def __init__(self):
+            self.calls: list[dict[str, object]] = []
+
+        async def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            return FakeOutput()
+
+    manager = FakeServerManager()
+    monitor = ModelMonitor(
+        backend=VerlBackend(server_manager=manager, tokenizer=FakeTokenizer()),
+        model_mapping={"verifier": ModelMappingEntry(actual_model="m1")},
+        renderer=ChatRenderer.from_tokenizer(FakeTokenizer(), model_name="Qwen"),
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
+            )
+
+        assert response.status_code == 200
+        assert manager.calls[0]["prompt_ids"] == [201, 202]
+        assert monitor.get_buffer()[0].prompt_ids == [201, 202]
+    finally:
+        await monitor.stop()
+
+
+async def test_monitor_normalizes_verl_finish_reason_in_http_response():
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt, tokenize):
+            assert messages == [{"role": "user", "content": "q"}]
+            assert add_generation_prompt is True
+            assert tokenize is True
+            return [201, 202]
+
+        def decode(self, token_ids, skip_special_tokens=True):
+            assert token_ids == [11]
+            assert skip_special_tokens is True
+            return "decoded-finish-reason"
+
+    class FakeOutput:
+        token_ids = [11]
+        log_probs = [-0.1]
+        stop_reason = "completed"
+
+    class FakeServerManager:
+        async def generate(self, **kwargs):
+            return FakeOutput()
+
+    monitor = ModelMonitor(
+        backend=VerlBackend(server_manager=FakeServerManager(), tokenizer=FakeTokenizer()),
+        model_mapping={"verifier": ModelMappingEntry(actual_model="m1")},
+        renderer=ChatRenderer.from_tokenizer(FakeTokenizer(), model_name="Qwen"),
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["choices"][0]["message"]["content"] == "decoded-finish-reason"
+        assert payload["choices"][0]["finish_reason"] == "stop"
+        record = monitor.get_buffer()[0]
+        assert record.finish_reason == "stop"
+        assert record.metadata["raw_stop_reason"] == "completed"
+    finally:
+        await monitor.stop()
+
+
+async def test_monitor_records_routed_experts_when_backend_returns_them():
+    class RoutedExpertBackend(InferenceBackend):
+        async def generate(self, request: ModelRequest) -> ModelResponse:
+            return ModelResponse(
+                content="ok",
+                token_ids=[1],
+                logprobs=[-0.1],
+                finish_reason="stop",
+                routed_experts=[[[3, 4]]],
+            )
+
+    monitor = ModelMonitor(
+        backend=RoutedExpertBackend(),
+        model_mapping={"verifier": ModelMappingEntry(actual_model="m1")},
+    )
+    port = await monitor.start()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"http://127.0.0.1:{port}/v1/chat/completions",
+                json={"model": "verifier", "messages": [{"role": "user", "content": "q"}]},
+            )
+
+        assert response.status_code == 200
+        assert monitor.get_buffer()[0].metadata["routed_experts"] == [[[3, 4]]]
+    finally:
+        await monitor.stop()
+
+
+def test_build_drift_artifact_captures_runtime_and_rerender_ids():
+    artifact = build_drift_artifact(
+        messages=[{"role": "user", "content": "hi"}],
+        runtime_prompt_ids=[1, 2],
+        rerendered_prompt_ids=[1, 3],
+        response_ids=[4],
+        response_logprobs=[-0.1],
+        render_fingerprint={"tokenizer": "tok-v1"},
+    )
+
+    assert artifact["runtime_prompt_ids"] == [1, 2]
+    assert artifact["mismatch"] is True

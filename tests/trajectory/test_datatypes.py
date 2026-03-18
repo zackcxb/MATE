@@ -22,6 +22,19 @@ def test_model_request_creation():
     assert req.request_id == "r1"
 
 
+def test_model_request_supports_runtime_prompt_ids_and_fingerprint():
+    req = ModelRequest(
+        request_id="r1",
+        agent_role="verifier",
+        messages=[{"role": "user", "content": "hi"}],
+        generation_params={},
+        prompt_ids=[1, 2, 3],
+        render_fingerprint={"tokenizer": "tok-v1"},
+    )
+    assert req.prompt_ids == [1, 2, 3]
+    assert req.render_fingerprint == {"tokenizer": "tok-v1"}
+
+
 def test_model_response_with_none_tokens():
     resp = ModelResponse(content="hi", token_ids=None, logprobs=None, finish_reason="stop")
     assert resp.token_ids is None
@@ -93,6 +106,27 @@ def test_episode_trajectory_agent_grouping():
     assert set(traj.agent_trajectories.keys()) == {"verifier", "searcher"}
     assert traj.agent_trajectories["verifier"][0].prompt_ids == [11, 12]
     assert traj.agent_trajectories["searcher"][0].prompt_ids == [21, 22]
+
+
+def test_turn_data_supports_branch_semantics_and_optional_routed_experts():
+    turn = TurnData(
+        agent_role="searcher",
+        turn_index=0,
+        messages=[],
+        response_text="ok",
+        token_ids=[4],
+        logprobs=[-0.1],
+        finish_reason="stop",
+        timestamp=1.0,
+        prompt_ids=[1, 2, 3],
+        metadata={},
+        replayed=True,
+        branch_phase="replay_prefix",
+        routed_experts=[[[7, 8]]],
+    )
+    assert turn.replayed is True
+    assert turn.branch_phase == "replay_prefix"
+    assert turn.routed_experts == [[[7, 8]]]
 
 
 def test_episode_result_with_per_turn_rewards():

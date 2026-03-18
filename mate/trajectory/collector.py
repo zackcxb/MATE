@@ -32,5 +32,8 @@ class TrajectoryCollector:
             finish_reason=record.finish_reason,
             timestamp=record.timestamp,
             prompt_ids=record.prompt_ids,
+            replayed=bool(metadata.get("replayed", False)),
+            branch_phase=metadata.get("branch_phase"),
+            routed_experts=metadata.get("routed_experts"),
             metadata=metadata,
         )

@@ -107,3 +107,19 @@ def test_build_preserves_prompt_ids():
     trajectory = TrajectoryCollector().build(buffer=[record], episode_id="ep-prompt-ids")
     turn = trajectory.agent_trajectories["searcher"][0]
     assert turn.prompt_ids == [1001, 1002]
+
+
+def test_build_preserves_routed_experts():
+    record = _record(
+        agent_role="searcher",
+        turn_index=1,
+        token_ids=[10],
+        logprobs=[-0.1],
+    )
+    record.metadata["routed_experts"] = [[[9, 10]]]
+
+    trajectory = TrajectoryCollector().build(buffer=[record], episode_id="ep-routed-experts")
+    turn = trajectory.agent_trajectories["searcher"][0]
+
+    assert turn.routed_experts == [[[9, 10]]]
+    assert turn.metadata["routed_experts"] == [[[9, 10]]]

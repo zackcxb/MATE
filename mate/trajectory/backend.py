@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 import math
-from collections.abc import Sequence
 from typing import Any
 
 import httpx
 
 from .datatypes import ModelRequest, ModelResponse
+from .renderer import ChatRenderer
 
 BACKEND_URL_OVERRIDE_KEY = "_backend_url"
 
@@ -30,11 +31,18 @@ class VLLMBackend(InferenceBackend):
         actual_model: str | None = None,
         timeout: float = 120.0,
         tokenizer: Any | None = None,
+        renderer: ChatRenderer | None = None,
     ) -> None:
         self.backend_url = backend_url.rstrip("/")
         self.actual_model = actual_model
         self.timeout = timeout
         self._tokenizer = tokenizer
+        if renderer is not None:
+            self._renderer = renderer
+        elif tokenizer is not None:
+            self._renderer = ChatRenderer.from_tokenizer(tokenizer, model_name=actual_model)
+        else:
+            self._renderer = None
 
     @classmethod
     def with_tokenizer(
@@ -52,6 +60,10 @@ class VLLMBackend(InferenceBackend):
             actual_model=actual_model or model_path,
             timeout=timeout,
             tokenizer=tokenizer,
+            renderer=ChatRenderer.from_tokenizer(
+                tokenizer,
+                model_name=actual_model or model_path,
+            ),
         )
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
@@ -88,9 +100,11 @@ class VLLMBackend(InferenceBackend):
         message = choice.get("message") or {}
         content = message.get("content") or ""
         finish_reason = choice.get("finish_reason") or "stop"
+        routed_experts = choice.get("routed_experts")
 
         token_ids: list[int] | None = None
-        prompt_ids: list[int] | None = None
+        prompt_ids = request.prompt_ids
+        render_fingerprint = dict(request.render_fingerprint)
         logprobs: list[float] | None = None
         logprobs_data = choice.get("logprobs")
         if isinstance(logprobs_data, dict) and isinstance(logprobs_data.get("content"), list):
@@ -113,7 +127,11 @@ class VLLMBackend(InferenceBackend):
             if token_ids is None and content:
                 token_ids = self._tokenizer.encode(content, add_special_tokens=False)
 
-        prompt_ids = self._extract_prompt_ids(request.messages)
+        if prompt_ids is None and self._renderer is not None:
+            prompt_ids, render_fingerprint = self._renderer.render(
+                request.messages,
+                add_generation_prompt=True,
+            )
 
         return ModelResponse(
             content=content,
@@ -121,6 +139,8 @@ class VLLMBackend(InferenceBackend):
             logprobs=logprobs,
             finish_reason=finish_reason,
             prompt_ids=prompt_ids,
+            routed_experts=routed_experts,
+            runtime_metadata={"render_fingerprint": render_fingerprint},
         )
 
     def _extract_token_ids_from_logprobs(
@@ -146,38 +166,67 @@ class VLLMBackend(InferenceBackend):
                 ids.append(self._tokenizer.unk_token_id or 0)
         return ids if ids else None
 
-    def _extract_prompt_ids(self, messages: list[dict[str, Any]]) -> list[int] | None:
-        if self._tokenizer is None:
-            return None
-        try:
-            prompt_ids = self._tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-            )
-        except TypeError:
-            # Older tokenizers may not support the tokenize kwarg.
-            prompt_ids = self._tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-            )
-        except Exception:
-            return None
-        return self._normalize_ids(prompt_ids)
+
+class VerlBackend(InferenceBackend):
+    """Inference backend that sends canonical prompt IDs to a direct generate API."""
+
+    def __init__(
+        self,
+        server_manager: Any,
+        *,
+        tokenizer: Any | None = None,
+        decoder: Callable[[list[int]], str] | None = None,
+    ) -> None:
+        self._server_manager = server_manager
+        self._tokenizer = tokenizer
+        self._decoder = decoder
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        if request.prompt_ids is None:
+            raise ValueError("VerlBackend requires canonical prompt_ids")
+
+        output = await self._server_manager.generate(
+            request_id=request.request_id,
+            prompt_ids=request.prompt_ids,
+            sampling_params=request.generation_params,
+        )
+        token_ids = list(output.token_ids) if output.token_ids is not None else None
+        logprobs = list(output.log_probs) if getattr(output, "log_probs", None) is not None else None
+        routed_experts = getattr(output, "routed_experts", None)
+        raw_stop_reason = getattr(output, "stop_reason", None)
+        content = getattr(output, "text", None)
+        if not isinstance(content, str) or not content:
+            content = self._decode_response_text(token_ids)
+
+        return ModelResponse(
+            content=content,
+            token_ids=token_ids,
+            logprobs=logprobs,
+            finish_reason=self._normalize_finish_reason(raw_stop_reason),
+            prompt_ids=list(request.prompt_ids),
+            routed_experts=routed_experts,
+            runtime_metadata={
+                "raw_stop_reason": raw_stop_reason,
+                "render_fingerprint": dict(request.render_fingerprint),
+                "sampling_fingerprint": dict(request.sampling_fingerprint),
+            },
+        )
+
+    def _decode_response_text(self, token_ids: list[int] | None) -> str:
+        if not token_ids:
+            return ""
+        if self._decoder is not None:
+            return self._decoder(token_ids)
+        if self._tokenizer is not None and hasattr(self._tokenizer, "decode"):
+            return self._tokenizer.decode(token_ids, skip_special_tokens=True)
+        raise ValueError("VerlBackend requires a tokenizer/decoder to recover text from token_ids")
 
     @staticmethod
-    def _normalize_ids(token_ids: Any) -> list[int] | None:
-        if token_ids is None:
-            return None
-        if hasattr(token_ids, "tolist"):
-            token_ids = token_ids.tolist()
-        if not isinstance(token_ids, Sequence) or isinstance(token_ids, (str, bytes)):
-            return None
-        ids: list[int] = []
-        for token_id in token_ids:
-            if isinstance(token_id, bool):
-                return None
-            if not isinstance(token_id, int):
-                return None
-            ids.append(int(token_id))
-        return ids if ids else None
+    def _normalize_finish_reason(raw_stop_reason: Any) -> str:
+        if raw_stop_reason in {"stop", "length", "content_filter", "tool_calls", "function_call"}:
+            return str(raw_stop_reason)
+        if raw_stop_reason in {"completed", "aborted", None}:
+            # VERL collapses multiple engine-local states into these values.
+            # Expose a valid OpenAI-compatible finish_reason and preserve the raw reason in metadata.
+            return "stop"
+        return "stop"

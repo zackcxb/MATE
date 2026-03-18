@@ -41,6 +41,7 @@ class ReplayCache:
                 logprobs=record.logprobs,
                 finish_reason=record.finish_reason,
                 prompt_ids=record.prompt_ids,
+                routed_experts=record.metadata.get("routed_experts"),
             )
             message_hashes[key] = _messages_hash(record.messages)
 

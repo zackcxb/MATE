@@ -1,6 +1,6 @@
 # MATE-reboot 项目上下文
 
-> 最后更新：2026-03-17（V0.3 brainstorming handoff）
+> 最后更新：2026-03-18（V0.3 MATE runtime contract implemented and locally verified）
 
 ## 项目定位
 
@@ -8,13 +8,13 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前阶段
 
-**V0.2 已收口；V0.3 处于 brainstorming handoff。** 当前阶段的核心议题是：
+**V0.2 已收口；V0.3 MATE-side implementation 已完成并通过本地验证。** 当前阶段的核心议题是：
 
-1. 是否恢复并实现 `VerlBackend`
-2. 如何系统研究并降低 token drifting 风险
-3. 是否提供 `DataProto` 输出选项
-4. 是否增加 `rollout_routed_expert` 字段以支持 MoE 一致性分析
-5. `global_turn_index` 在新方案中的真实必要性
+1. 维持 `VerlBackend` + canonical renderer + hard validator 的 runtime contract 稳定性
+2. 保持 exporter 优先消费 recorded token truth，而不是退回 training-side re-render
+3. 继续将 drift 研究限定在 diagnostics/artifact 层，而不是扩张 runtime hard gate
+4. 保持 `rollout_routed_experts` 为 optional capability-gated 路径
+5. 维持 tree rollout 的显式 branch semantics，避免回退到 `global_turn_index`
 
 ## 当前冻结事实
 
@@ -49,11 +49,11 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 | 议题 | 当前状态 |
 |------|------|
-| `VerlBackend` | 当前阶段核心候选方案，待明确与 `VLLMBackend` 的职责边界 |
-| token drifting | 已确认为专项研究问题，不仅限于 prompt re-render 风险 |
-| `DataProto` 输出 | 作为候选输出契约，待评估收益与耦合成本 |
-| `rollout_routed_expert` | 作为 MoE 一致性候选字段，待评估来源、粒度与必要性 |
-| `global_turn_index` | 待在完整新方案中重新评估，不再单独先行冻结 |
+| `VerlBackend` | 已在 MATE 实现 direct `prompt_ids -> generate(...)` runtime path，并接入 canonical validator |
+| token drifting | 已实现 renderer fingerprint、diagnostic artifact hook、token-truth exporter boundary |
+| `DataProto` 输出 | 仍为 optional exporter 边界；本仓未引入 native `DataProto` 输出 |
+| `rollout_routed_experts` | 已实现 optional capability-gated 透传/采集/回放 |
+| tree branch contract | 已实现显式 `replayed` / `branch_phase` 语义，替代 `global_turn_index` |
 
 ## 关键依赖
 
@@ -71,12 +71,11 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 ### 当前阶段必读
 
 1. `AGENTS.md`
-2. `docs/plans/2026-03-16-bgrpo-v03-design.md`
-3. `docs/plans/2026-03-16-bgrpo-v03-impl-plan.md`
-4. `docs/plans/2026-03-13-tokenization-drift-analysis.md`
-5. `docs/ref/slime-tokenization-drift-analysis.md`
-6. `docs/prompts/2026-03-15-v03-brainstorming-handoff.md`
-7. `skills/document-entry-hygiene.md`
+2. `docs/plans/2026-03-17-bgrpo-v03-runtime-contract-design.md`
+3. `docs/plans/2026-03-17-bgrpo-v03-implementation-plan.md`
+4. `docs/ref/slime-tokenization-drift-analysis.md`
+5. `docs/prompts/2026-03-15-v03-brainstorming-handoff.md`
+6. `skills/document-entry-hygiene.md`
 
 ### 冻结历史设计
 
@@ -93,9 +92,7 @@ MATE-reboot 是多智能体轨迹采集引擎（Agent Trajectory Engine）的开
 
 ## 当前待办
 
-1. 在新窗口完成 `VerlBackend` 方案 brainstorming，并明确与 `VLLMBackend` 的职责边界。
-2. 制定 token-drift 研究设计：taxonomy、实验矩阵、artifact schema、success criteria。
-3. 客观评估 `DataProto` 输出选项的价值与耦合代价。
-4. 客观评估 `rollout_routed_expert` 字段的必要性、来源和粒度。
-5. 重新评估 `global_turn_index` 的角色与优先级。
-6. 在设计批准后，再编写新的实现计划。
+1. 将本次 V0.3 MATE-side runtime contract 改动同步给 OrchRL 训练侧同事，保持边界清晰。
+2. 基于新 exporter boundary 评估 OrchRL 侧 zero re-tokenize 消费接入。
+3. 继续做 hypothesis 级 token-drift diagnostics，不把研究性检查升级成 hard gate。
+4. 视训练侧需要决定是否追加 optional `DataProto` exporter，而非 native output。
