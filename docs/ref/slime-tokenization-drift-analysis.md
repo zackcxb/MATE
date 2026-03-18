@@ -1,7 +1,7 @@
 # Slime 如何解决 Tokenization Drift 问题
 
 **Date:** 2026-03-17
-**Scope:** 分析 `/data1/lmy/agentic-rl/slime` 代码库中对 tokenization drift 的处理方式
+**Scope:** 分析 `/home/cxb/rl_framework/slime` 代码库中对 tokenization drift 的处理方式
 
 ---
 
