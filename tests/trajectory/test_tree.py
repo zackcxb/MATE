@@ -13,7 +13,7 @@ from mate.trajectory.datatypes import (
     TurnData,
 )
 from mate.trajectory.pipe import AgentPipe, AgentPipeConfig
-from mate.trajectory.replay_cache import ReplayCache
+from mate.trajectory._support.replay_cache import ReplayCache
 from mate.trajectory.reward import FunctionRewardProvider
 from mate.trajectory.tree import tree_rollout
 

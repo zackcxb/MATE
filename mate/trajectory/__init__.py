@@ -1,5 +1,5 @@
 from .backend import InferenceBackend, VLLMBackend, VerlBackend
-from .collector import TrajectoryCollector
+from ._support.collector import TrajectoryCollector
 from .datatypes import (
     BranchResult,
     EpisodeResult,
@@ -11,17 +11,18 @@ from .datatypes import (
     TreeEpisodeResult,
     TurnData,
 )
-from .diagnostics import build_drift_artifact
-from .exporters import export_tokenized_turn
-from .launcher import MASLauncher
+from ._support.diagnostics import build_drift_artifact
+from .display import format_episode, format_training_mapping, format_tree
+from ._support.exporters import export_tokenized_turn
+from ._support.launcher import MASLauncher
 from .monitor import ModelMonitor
 from .parallel import parallel_rollout
 from .pipe import AgentPipe, AgentPipeConfig
-from .replay_cache import ReplayCache
-from .renderer import ChatRenderer
+from ._support.replay_cache import ReplayCache
+from ._support.renderer import ChatRenderer
 from .reward import FunctionRewardProvider, RewardProvider, RewardWorker
 from .tree import tree_rollout
-from .validator import validate_runtime_request, validate_runtime_response
+from ._support.validator import validate_runtime_request, validate_runtime_response
 
 __all__ = [
     "AgentPipe",
@@ -31,6 +32,9 @@ __all__ = [
     "EpisodeResult",
     "EpisodeTrajectory",
     "export_tokenized_turn",
+    "format_episode",
+    "format_training_mapping",
+    "format_tree",
     "FunctionRewardProvider",
     "InferenceBackend",
     "InteractionRecord",

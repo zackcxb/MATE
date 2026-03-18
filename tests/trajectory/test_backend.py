@@ -3,8 +3,8 @@ import pytest
 
 from mate.trajectory.backend import InferenceBackend, VLLMBackend, VerlBackend
 from mate.trajectory.datatypes import ModelRequest, ModelResponse
-from mate.trajectory.renderer import ChatRenderer
-from mate.trajectory.validator import validate_runtime_response
+from mate.trajectory._support.renderer import ChatRenderer
+from mate.trajectory._support.validator import validate_runtime_response
 
 
 def test_inference_backend_is_abstract():

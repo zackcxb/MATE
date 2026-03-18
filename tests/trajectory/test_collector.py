@@ -1,4 +1,4 @@
-from mate.trajectory.collector import TrajectoryCollector
+from mate.trajectory._support.collector import TrajectoryCollector
 from mate.trajectory.datatypes import EpisodeTrajectory, InteractionRecord
 
 

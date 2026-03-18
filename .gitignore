@@ -7,3 +7,7 @@ __pycache__/
 artifacts/*.json
 artifacts/*.html
 artifacts/*.parquet
+
+# Local git worktrees.
+.worktrees
+.worktrees/

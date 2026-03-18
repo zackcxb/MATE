@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .datatypes import ModelRequest, ModelResponse
+from ..datatypes import ModelRequest, ModelResponse
 
 
 def validate_runtime_request(request: ModelRequest) -> None:

@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from mate.trajectory.datatypes import InteractionRecord, ModelResponse
+from ..datatypes import InteractionRecord, ModelResponse
 
 
 def _messages_hash(messages: list[dict[str, Any]]) -> str:

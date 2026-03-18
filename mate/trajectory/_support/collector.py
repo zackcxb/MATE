@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .datatypes import EpisodeTrajectory, InteractionRecord, TurnData
+from ..datatypes import EpisodeTrajectory, InteractionRecord, TurnData
 
 
 class TrajectoryCollector:

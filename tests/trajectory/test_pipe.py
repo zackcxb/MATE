@@ -17,7 +17,7 @@ from mate.trajectory.datatypes import (
 )
 from mate.trajectory import pipe as pipe_module
 from mate.trajectory.pipe import AgentPipe, AgentPipeConfig
-from mate.trajectory.renderer import ChatRenderer
+from mate.trajectory._support.renderer import ChatRenderer
 from mate.trajectory.reward import FunctionRewardProvider
 
 

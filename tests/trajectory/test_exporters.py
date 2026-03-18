@@ -1,7 +1,7 @@
 import pytest
 
 from mate.trajectory.datatypes import TurnData
-from mate.trajectory.exporters import export_tokenized_turn
+from mate.trajectory._support.exporters import export_tokenized_turn
 
 
 def test_tokenized_turn_export_prefers_recorded_prompt_ids():

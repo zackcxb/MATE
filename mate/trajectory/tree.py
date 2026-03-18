@@ -6,7 +6,7 @@ import logging
 from .backend import InferenceBackend
 from .datatypes import BranchResult, InteractionRecord, TreeEpisodeResult
 from .pipe import AgentPipe, AgentPipeConfig
-from .replay_cache import ReplayCache
+from ._support.replay_cache import ReplayCache
 from .reward import RewardProvider
 
 _LOGGER = logging.getLogger(__name__)

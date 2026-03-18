@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from mate.trajectory.launcher import MASLauncher
+from mate.trajectory._support.launcher import MASLauncher
 
 
 def _make_template() -> dict:
@@ -134,7 +134,7 @@ def test_prepare_config_write_error_cleans_temp_file(tmp_path, monkeypatch):
     def _raise_dump_error(*_args, **_kwargs):
         raise RuntimeError("write failed")
 
-    monkeypatch.setattr("mate.trajectory.launcher.yaml.safe_dump", _raise_dump_error)
+    monkeypatch.setattr("mate.trajectory._support.launcher.yaml.safe_dump", _raise_dump_error)
 
     with pytest.raises(RuntimeError, match="write failed"):
         launcher.prepare_config(

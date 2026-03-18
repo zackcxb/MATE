@@ -1,5 +1,5 @@
 from mate.trajectory.datatypes import InteractionRecord, ModelResponse
-from mate.trajectory.replay_cache import ReplayCache
+from mate.trajectory._support.replay_cache import ReplayCache
 
 
 def _make_record(

@@ -6,9 +6,9 @@ import pytest
 from mate.trajectory.backend import InferenceBackend, VerlBackend
 from mate.trajectory.datatypes import InteractionRecord, ModelMappingEntry, ModelRequest, ModelResponse
 from mate.trajectory.monitor import ModelMonitor
-from mate.trajectory.replay_cache import ReplayCache
-from mate.trajectory.renderer import ChatRenderer
-from mate.trajectory.diagnostics import build_drift_artifact
+from mate.trajectory._support.replay_cache import ReplayCache
+from mate.trajectory._support.renderer import ChatRenderer
+from mate.trajectory._support.diagnostics import build_drift_artifact
 
 
 class RecordingBackend(InferenceBackend):

@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from .datatypes import ModelRequest, ModelResponse
-from .renderer import ChatRenderer
+from ._support.renderer import ChatRenderer
 
 BACKEND_URL_OVERRIDE_KEY = "_backend_url"
 

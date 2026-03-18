@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .datatypes import TurnData
+from ..datatypes import TurnData
 
 
 def export_tokenized_turn(turn: TurnData) -> dict[str, Any]:
